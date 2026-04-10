@@ -1,0 +1,948 @@
+esphome:
+  name: dashboard
+  friendly_name: Living Room Info Frame
+  name_add_mac_suffix: false
+  on_boot:
+    priority: 600
+    then: 
+      - logger.log: "Turning on EPD power (GPIO15)" 
+      - output.turn_on: epd_power 
+      - delay: 500ms 
+      - logger.log: "EPD power should be stable now"
+      # Wait for API connection first — no point checking sensors before HA is connected
+      - wait_until:
+          condition:
+            api.connected:
+          timeout: 20s
+      - logger.log: "API connected (or timeout)"
+      # Now wait for actual sensor data to arrive
+      - wait_until:
+          condition:
+            lambda: |-
+              bool has_weather = id(ha_weather_condition).state != "";
+              bool has_temp = !isnan(id(ha_weather_temperature).state);
+              bool has_calendar = id(data_updated);
+              bool has_battery = !isnan(id(battery_percent).state);
+              ESP_LOGD("BOOT", "Waiting: weather=%d, temp=%d, calendar=%d, battery=%d", 
+                       has_weather, has_temp, has_calendar, has_battery);
+              return (has_weather || has_temp || has_calendar) && has_battery;
+          timeout: 30s
+      - logger.log: "Data received (or timeout) — forcing display update"
+      - lambda: 'id(initial_data_received) = true;'
+      - delay: 500ms
+      - component.update: eink_display
+      - logger.log: "Display updated with data"
+      # Give e-ink time to physically finish rendering before sleeping
+      - delay: 5s
+      - logger.log: "Entering deep sleep"
+      - deep_sleep.enter: deep_sleep_1
+  on_shutdown:
+    then:
+      - output.turn_off: epd_power
+
+esp32:
+  board: lolin_s3
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+# Allow Over-The-Air updates
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+
+globals:
+  - id: initial_data_received
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: data_updated 
+    type: bool 
+    restore_value: no 
+    initial_value: 'false'
+
+deep_sleep:
+  id: deep_sleep_1
+  run_duration: 90s
+  sleep_duration: 20min
+  wakeup_pin:
+    number: GPIO1
+    inverted: false
+  wakeup_pin_mode: KEEP_AWAKE
+
+# --- SPI używane przez ekran
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO11
+
+# --- Wyjście do sterowania zasilaniem wyświetlacza (PWR)
+output:
+  - platform: gpio
+    pin: GPIO15
+    id: epd_power
+    inverted: false
+
+# --- opcjonalny sensor/stan przełącznika (pokazuje w HA)
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO2
+      mode: INPUT_PULLDOWN
+      inverted: true
+    name: "Deep Sleep Switch State"
+    id: deepsleep_switch
+
+# --- Sensory
+time:
+  - platform: homeassistant
+    id: ha_time
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_power
+    update_interval: 5s
+
+  - platform: adc
+    pin: GPIO3
+    name: "Battery Voltage"
+    id: battery_voltage
+    update_interval: 5s
+    attenuation: 12db
+    filters:
+      - multiply: 2.0
+    unit_of_measurement: "V"
+
+  - platform: template
+    name: "Battery"
+    id: battery_percent
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      float v = id(battery_voltage).state;
+      if (isnan(v)) return NAN;
+      float percent = (v - 3.0f) / (4.2f - 3.0f) * 100.0f;
+      if (percent > 100) percent = 100;
+      if (percent < 0) percent = 0;
+      return percent;
+    on_value:
+      then:
+        - logger.log: "Battery data received"
+
+  - platform: homeassistant
+    id: ha_weather_temperature
+    entity_id: weather.forecast_dom
+    attribute: temperature
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+
+  - platform: homeassistant
+    id: ha_weather_uv
+    entity_id: weather.forecast_dom
+    attribute: uv_index
+    internal: true
+
+  # Forecast
+  - platform: homeassistant
+    id: ha_today_rain
+    entity_id: sensor.forecast_today_precipitation
+    internal: true
+    unit_of_measurement: "mm"
+  - platform: homeassistant
+    id: ha_forecast_1_temp
+    entity_id: sensor.forecast_day_1_temp_max
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+  - platform: homeassistant
+    id: ha_forecast_2_temp
+    entity_id: sensor.forecast_day_2_temp_max
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+  - platform: homeassistant
+    id: ha_forecast_3_temp
+    entity_id: sensor.forecast_day_3_temp_max
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+  - platform: homeassistant
+    id: ha_forecast_4_temp
+    entity_id: sensor.forecast_day_4_temp_max
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+
+  # Dane lokalne
+  - platform: homeassistant
+    id: local_temp
+    entity_id: sensor.taras_temperature
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+  - platform: homeassistant
+    id: local_humidity
+    entity_id: sensor.taras_humidity
+    internal: true
+    unit_of_measurement: "%"
+  - platform: homeassistant
+    id: local_pressure
+    entity_id: sensor.taras_pressure
+    internal: true
+    unit_of_measurement: "hPa"
+  - platform: homeassistant
+    id: local_air
+    entity_id: sensor.taras_pm2_5
+    internal: true
+    unit_of_measurement: "µg/m³"
+  - platform: homeassistant
+    id: livingroom_temp
+    entity_id: sensor.esphome_web_d57124_living_room_temperature
+    internal: true
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+  - platform: homeassistant
+    id: livingroom_humidity
+    entity_id: sensor.esphome_web_d57124_living_room_humidity
+    internal: true
+    unit_of_measurement: "%"
+  - platform: homeassistant
+    id: home_tasks
+    entity_id: sensor.donetick_open_tasks
+    internal: true
+
+  # Dane zewnętrzne
+  - platform: homeassistant
+    id: local_fuel
+    entity_id: sensor.industriestr_34_super
+    internal: true
+    unit_of_measurement: "€"
+  - platform: homeassistant
+    id: eur_pln
+    entity_id: sensor.eur_pln
+    internal: true
+  - platform: homeassistant
+    id: ev_battery
+    entity_id: sensor.tucson_ev_battery_level
+    internal: true
+    unit_of_measurement: "%"
+  - platform: homeassistant
+    id: ev_range
+    entity_id: sensor.tucson_ev_range
+    internal: true
+    unit_of_measurement: "km"
+  - platform: homeassistant
+    id: fuel_range
+    entity_id: sensor.tucson_fuel_driving_range
+    internal: true
+    unit_of_measurement: "km"
+
+text_sensor:
+  - platform: homeassistant
+    id: ha_weather_condition
+    entity_id: weather.forecast_dom
+    internal: true
+    on_value:
+      then:
+        - logger.log: "Weather data received"
+
+  - platform: homeassistant
+    id: ha_forecast_1_condition
+    entity_id: sensor.forecast_day_1_conditions
+    internal: true
+  - platform: homeassistant
+    id: ha_forecast_2_condition
+    entity_id: sensor.forecast_day_2_conditions
+    internal: true
+  - platform: homeassistant
+    id: ha_forecast_3_condition
+    entity_id: sensor.forecast_day_3_conditions
+    internal: true
+  - platform: homeassistant
+    id: ha_forecast_4_condition
+    entity_id: sensor.forecast_day_4_conditions
+    internal: true
+  - platform: homeassistant
+    id: ha_forecast_1_datetime
+    entity_id: sensor.forecast_day_1_date
+    internal: true
+  - platform: homeassistant
+    id: ha_forecast_2_datetime
+    entity_id: sensor.forecast_day_2_date
+    internal: true
+  - platform: homeassistant
+    id: ha_forecast_3_datetime
+    entity_id: sensor.forecast_day_3_date
+    internal: true
+  - platform: homeassistant
+    id: ha_forecast_4_datetime
+    entity_id: sensor.forecast_day_4_date
+    internal: true
+  - platform: homeassistant
+    entity_id: sensor.upcoming_events
+    id: ha_upcoming_raw
+    attribute: events
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            std::string raw = id(ha_upcoming_raw).state;
+            ESP_LOGI("CALENDAR", "Raw data length: %d", raw.length());
+            if (raw.length() > 0) {
+              ESP_LOGI("CALENDAR", "First 200 chars: %s", raw.substr(0, 200).c_str());
+            }
+            id(data_updated) = true;
+            ESP_LOGI("CALENDAR", "data_updated flag set");
+        - logger.log: "Calendar data received"
+
+# --- Fonty
+font:
+  - file: "fonts/NotoSans-Regular.ttf"
+    id: font_info
+    size: 14
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ĄąĆćĘęŁłŃńÓóŚśŹźŻż.,:;!?'\"()[]/-+%°³µ€ "
+  - file: "fonts/NotoSans-Regular.ttf"
+    id: font_small
+    size: 18
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ĄąĆćĘęŁłŃńÓóŚśŹźŻż.,:;!?'\"()[]/-+%°³µ€ "
+  - file: "fonts/NotoSans-Bold.ttf"
+    id: font_large_bold
+    size: 108
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ĄąĆćĘęŁłŃńÓóŚśŹźŻż.,:;!?'\"()[]/-+%°³µ€ "
+  - file: "fonts/NotoSans-Bold.ttf"
+    id: font_medium_bold
+    size: 30
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ĄąĆćĘęŁłŃńÓóŚśŹźŻż.,:;!?'\"()[]/-+%°³µ€ "
+  - file: "fonts/NotoSans-Bold.ttf"
+    id: font_small_bold
+    size: 18
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ĄąĆćĘęŁłŃńÓóŚśŹźŻż.,:;!?'\"()[]/-+%°³µ€ "
+  - file: 'fonts/materialdesignicons-webfont.ttf'
+    id: font_mdi_large
+    size: 96
+    glyphs: &mdi-weather-glyphs
+      - "\U000F0590" # mdi-weather-cloudy
+      - "\U000F0F2F" # mdi-weather-cloudy-alert
+      - "\U000F0E6E" # mdi-weather-cloudy-arrow-right
+      - "\U000F0591" # mdi-weather-fog
+      - "\U000F0592" # mdi-weather-hail
+      - "\U000F0F30" # mdi-weather-hazy
+      - "\U000F0898" # mdi-weather-hurricane
+      - "\U000F0593" # mdi-weather-lightning
+      - "\U000F067E" # mdi-weather-lightning-rainy
+      - "\U000F0594" # mdi-weather-night
+      - "\U000F0F31" # mdi-weather-night-partly-cloudy
+      - "\U000F0595" # mdi-weather-partly-cloudy
+      - "\U000F0F32" # mdi-weather-partly-lightning
+      - "\U000F0F33" # mdi-weather-partly-rainy
+      - "\U000F0F34" # mdi-weather-partly-snowy
+      - "\U000F0F35" # mdi-weather-partly-snowy-rainy
+      - "\U000F0596" # mdi-weather-pouring
+      - "\U000F0597" # mdi-weather-rainy
+      - "\U000F0598" # mdi-weather-snowy
+      - "\U000F0F36" # mdi-weather-snowy-heavy
+      - "\U000F067F" # mdi-weather-snowy-rainy
+      - "\U000F0599" # mdi-weather-sunny
+      - "\U000F0F37" # mdi-weather-sunny-alert
+      - "\U000F14E4" # mdi-weather-sunny-off
+      - "\U000F059A" # mdi-weather-sunset
+      - "\U000F059B" # mdi-weather-sunset-down
+      - "\U000F059C" # mdi-weather-sunset-up
+      - "\U000F0F38" # mdi-weather-tornado
+      - "\U000F059D" # mdi-weather-windy
+      - "\U000F059E" # mdi-weather-windy-variant
+      - "\U000F05A9" # mdi-wifi
+      - "\U000F0928" # mdi-wifi-strength-4
+      - "\U000F0925" # mdi-wifi-strength-3
+      - "\U000F0922" # mdi-wifi-strength-2
+      - "\U000F091F" # mdi-wifi-strength-1
+      - "\U000F092B" # mdi-wifi-strength-alert-outline
+      - "\U000F0079" # mdi-battery
+      - "\U000F0082" # mdi-battery-90
+      - "\U000F0081" # mdi-battery-80
+      - "\U000F0080" # mdi-battery-70
+      - "\U000F007F" # mdi-battery-60
+      - "\U000F007E" # mdi-battery-50
+      - "\U000F007D" # mdi-battery-40
+      - "\U000F007C" # mdi-battery-30
+      - "\U000F007B" # mdi-battery-20
+      - "\U000F007A" # mdi-battery-10
+      - "\U000F10CD" # mdi-battery-alert-variant-outline
+      - "\U000F050F" # mdi-thermometer
+      - "\U000F0F55" # mdi-home-thermometer-outline
+      - "\U000F029A" # mdi-gauge
+      - "\U000F058E" # mdi-water-percent
+      - "\U000F054A" # mdi-umbrella
+      - "\U000F0EC9" # mdi-scatter-plot
+      - "\U000F0298" # mdi-gas-station
+      - "\U000F01AD" # mdi-currency-eur
+      - "\U000F05F1" # mdi-ev-station
+      - "\U000F07CA" # mdi-fuel
+      - "\U000F0EA7" # mdi-text-box-check-outline
+      - "\U000F06CC" # mdi-delete-empty
+  - file: 'fonts/materialdesignicons-webfont.ttf'
+    id: font_mdi_medium
+    size: 36
+    glyphs: *mdi-weather-glyphs
+  - file: 'fonts/materialdesignicons-webfont.ttf'
+    id: font_mdi_info
+    size: 18
+    glyphs: *mdi-weather-glyphs
+
+# --- Wyświetlacz Waveshare (7.5in V2 monochrome)
+display:
+  - platform: waveshare_epaper
+    id: eink_display
+    model: 7.50inV2
+    cs_pin: GPIO5
+    dc_pin: GPIO16
+    busy_pin:
+      number: GPIO4
+      inverted: true
+    reset_pin: GPIO17
+    reset_duration: 10ms
+    update_interval: never
+    rotation: 90
+    lambda: |-
+      // --- Funkcja pomocnicza: mapa ikon pogodowych MDI ---
+      std::map<std::string, std::string> weather_icon_map {
+        {"cloudy", "\U000F0590"}, {"cloudy-alert", "\U000F0F2F"}, {"cloudy-arrow-right", "\U000F0E6E"},
+        {"fog", "\U000F0591"}, {"hail", "\U000F0592"}, {"hazy", "\U000F0F30"}, {"hurricane", "\U000F0898"},
+        {"lightning", "\U000F0593"}, {"lightning-rainy", "\U000F067E"}, {"night", "\U000F0594"},
+        {"night-partly-cloudy", "\U000F0F31"}, {"partlycloudy", "\U000F0595"}, {"partly-lightning", "\U000F0F32"},
+        {"partly-rainy", "\U000F0F33"}, {"partly-snowy", "\U000F0F34"}, {"partly-snowy-rainy", "\U000F0F35"},
+        {"pouring", "\U000F0596"}, {"rainy", "\U000F0597"}, {"snowy", "\U000F0598"}, {"snowy-heavy", "\U000F0F36"},
+        {"snowy-rainy", "\U000F067F"}, {"sunny", "\U000F0599"}, {"sunny-alert", "\U000F0F37"}, {"sunny-off", "\U000F14E4"},
+        {"sunset", "\U000F059A"}, {"sunset-down", "\U000F059B"}, {"sunset-up", "\U000F059C"}, {"tornado", "\U000F0F38"},
+        {"windy", "\U000F059D"}, {"windy-variant", "\U000F059E"}, {"clear-night", "\U000F0594"}
+      };
+
+      float uv = id(ha_weather_uv).state;
+      std::string uv_text;
+      if (std::isnan(uv)) uv_text = "b/d";
+      else if (uv <= 2.0) uv_text = "Niski";
+      else if (uv <= 5.0) uv_text = "Średni";
+      else if (uv <= 7.0) uv_text = "Wysoki";
+      else if (uv <= 10.0) uv_text = "Bardzo wysoki";
+      else uv_text = "Ekstremalny";
+
+      float fuel = id(local_fuel).state;
+
+      // --- Mapowanie angielskich dni tygodnia na polskie skróty ---
+      std::map<std::string, std::string> weekday_pl {
+        {"Monday", "Pon"}, {"Tuesday", "Wt"}, {"Wednesday", "Śr"}, {"Thursday", "Czw"},
+        {"Friday", "Pt"}, {"Saturday", "Sob"}, {"Sunday", "Niedz"}
+      };
+
+      // --- Loader / oczekiwanie na dane ---
+      if (!id(initial_data_received)) {
+        it.printf(240, 390, id(font_small_bold), TextAlign::TOP_CENTER, "AKTUALIZACJA DANYCH...");
+
+      // Wyświetl aktualny czas nawet podczas ładowania
+      auto time_now = id(ha_time).now();
+      if (time_now.is_valid()) {
+        char time_buf[32];
+        snprintf(time_buf, sizeof(time_buf), "%02d:%02d", time_now.hour, time_now.minute);
+        it.printf(240, 450, id(font_medium_bold), TextAlign::TOP_CENTER, "%s", time_buf);
+      }
+      return;
+      }
+
+      // --- Aktualna pogoda ---
+      std::string cur_cond = id(ha_weather_condition).state;
+      std::string cur_icon = "?";
+      auto itmap = weather_icon_map.find(cur_cond);
+      if (itmap != weather_icon_map.end()) cur_icon = itmap->second;
+
+      it.printf(100, 88, id(font_mdi_large), TextAlign::TOP_CENTER, "%s", cur_icon.c_str());
+      if (!std::isnan(id(ha_weather_temperature).state))
+        it.printf(300, 58, id(font_large_bold), TextAlign::TOP_CENTER, "%2.0f°C", id(ha_weather_temperature).state);
+      else
+        it.printf(300, 58, id(font_large_bold), TextAlign::TOP_CENTER, "--°C");
+
+      it.printf(200, 180, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0F55");
+      if (!std::isnan(id(livingroom_temp).state))
+        it.printf(240, 185, id(font_small_bold), TextAlign::TOP_LEFT, "%2.0f°C", id(livingroom_temp).state);
+      else
+        it.printf(240, 185, id(font_small_bold), TextAlign::TOP_LEFT, "--°C");
+
+      it.printf(300, 180, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F058E");
+      if (!std::isnan(id(livingroom_humidity).state))
+        it.printf(335, 185, id(font_small_bold), TextAlign::TOP_LEFT, "%2.0f%%", id(livingroom_humidity).state);
+      else
+        it.printf(335, 185, id(font_small_bold), TextAlign::TOP_LEFT, "--%");
+
+      // --- Separator poziomy (3px) ---
+      int sep_y = 225;
+      it.line(40, sep_y, 440, sep_y);
+      it.line(40, sep_y - 1, 440, sep_y - 1);
+      it.line(40, sep_y + 1, 440, sep_y + 1);
+
+      // --- 4-dniowa prognoza ---
+      int base_x = 90;
+      int col_spacing = 100;
+      int day_y = sep_y + 12;
+      int icon_y = sep_y + 42;
+      int temp_y = sep_y + 82;
+
+      for (int i = 1; i <= 4; i++) {
+        int cx = base_x + (i-1) * col_spacing;
+        float t = NAN;
+        std::string cond = "";
+        std::string dt = "";
+
+        if (i == 1) { t = id(ha_forecast_1_temp).state; cond = id(ha_forecast_1_condition).state; dt = id(ha_forecast_1_datetime).state; }
+        else if (i == 2) { t = id(ha_forecast_2_temp).state; cond = id(ha_forecast_2_condition).state; dt = id(ha_forecast_2_datetime).state; }
+        else if (i == 3) { t = id(ha_forecast_3_temp).state; cond = id(ha_forecast_3_condition).state; dt = id(ha_forecast_3_datetime).state; }
+        else if (i == 4) { t = id(ha_forecast_4_temp).state; cond = id(ha_forecast_4_condition).state; dt = id(ha_forecast_4_datetime).state; }
+
+        // Wyciągamy tylko dzień tygodnia
+        std::string dayname = dt;
+        size_t comma = dt.find(',');
+        if (comma != std::string::npos) {
+          std::string day_eng = dt.substr(0, comma);
+          auto wd_it = weekday_pl.find(day_eng);
+          if (wd_it != weekday_pl.end()) dayname = wd_it->second;
+        }
+
+        // Ikonka
+        std::string ficon = "?";
+        auto f_it = weather_icon_map.find(cond);
+        if (f_it != weather_icon_map.end()) ficon = f_it->second;
+
+        it.printf(cx, day_y, id(font_small_bold), TextAlign::TOP_CENTER, "%s", dayname.c_str());
+        it.printf(cx, icon_y, id(font_mdi_medium), TextAlign::TOP_CENTER, "%s", ficon.c_str());
+        if (isnan(t)) it.printf(cx, temp_y, id(font_small_bold), TextAlign::TOP_CENTER, "--");
+        else it.printf(cx, temp_y, id(font_small_bold), TextAlign::TOP_CENTER, "%.0f°C", t);
+      }
+
+      // --- Separator poziomy pod prognozą ---
+      int sep2_y = temp_y + 40;
+      it.line(40, sep2_y, 440, sep2_y);
+      it.line(40, sep2_y - 1, 440, sep2_y - 1);
+      it.line(40, sep2_y + 1, 440, sep2_y + 1);
+
+      // --- Lewa kolumna danych lokalnych ---
+      int last_y = sep2_y + 20;
+      int spacing = 10;
+
+      // --- Pobranie aktualnej daty z HA ---
+      auto time_now = id(ha_time).now();
+      if (!time_now.is_valid()) {
+        it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Brak danych o czasie");
+      } else {
+        std::string weekdays_pl[7] = {"niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"};
+        std::string months_pl[12] = {
+          "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
+          "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień"
+        };
+
+        // ESPHome: day_of_week 1=Sunday, 2=Monday, ..., 7=Saturday
+        int weekday = time_now.day_of_week;
+        int day = time_now.day_of_month;
+        int month = time_now.month;  // 1-12
+
+        std::string day_name = weekdays_pl[(weekday - 1) % 7];
+        std::string month_name = months_pl[month - 1];
+
+        it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "%s,", day_name.c_str());
+        last_y += 8 + spacing;
+        it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "%d %s", day, month_name.c_str());
+      }
+
+      last_y += 20 + spacing;
+      it.line(40, last_y + 1, 210, last_y + 1);
+      it.line(40, last_y + 3, 210, last_y + 3);
+      last_y += 1 + spacing;
+
+      it.printf(50, last_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F01AD");
+      if (!std::isnan(id(eur_pln).state)) {
+        it.printf(90, last_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "%.2fPLN", id(eur_pln).state);
+      } else {
+        it.printf(90, last_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "brak danych");
+      }
+      last_y += 24 + spacing;
+
+      it.printf(50, last_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0EA7");
+      if (!std::isnan(id(home_tasks).state)) {
+        it.printf(90, last_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "zadania: %2.0f", id(home_tasks).state);
+      } else {
+        it.printf(90, last_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "brak danych");
+      }
+      last_y += 24 + spacing;
+
+      float rain = id(ha_today_rain).state;
+      const char* rain_desc;
+
+      if (std::isnan(rain)) {
+        rain_desc = "brak danych";
+      } else if (rain < 0.2) {
+        rain_desc = "bez deszczu";
+      } else if (rain < 1.0) {
+        rain_desc = "możliwe opady";
+      } else if (rain < 5.0) {
+        rain_desc = "niewielki deszcz";
+      } else if (rain < 15.0) {
+        rain_desc = "potrzebny parasol";
+      } else {
+        rain_desc = "ulewa";
+      }
+
+      it.printf(50, last_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F054A");
+      it.printf(90, last_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "%s", rain_desc);
+
+      last_y += 32 + spacing;
+
+      // KALENDARZ ----------------------------------------
+
+      std::string raw = id(ha_upcoming_raw).state;
+
+      // --- Pomocnicze funkcje ---
+      auto trim = [](const std::string &s) {
+        size_t a=0; while (a<s.size() && isspace((unsigned char)s[a])) a++;
+        size_t b=s.size(); while (b>a && isspace((unsigned char)s[b-1])) b--;
+        return s.substr(a,b-a);
+      };
+      auto lower_copy = [](const std::string &s){
+        std::string out = s;
+        for (auto &c : out) c = std::tolower((unsigned char)c);
+        return out;
+      };
+
+      auto extract_all_after = [&](const std::string &text, const std::string &marker) {
+        std::vector<std::string> results;
+        if (text.empty()) return results;
+
+        std::string low = lower_copy(text);
+        std::string mlow = lower_copy(marker);
+
+        size_t pos = 0;
+        while (true) {
+          size_t idx = low.find(mlow, pos);
+          if (idx == std::string::npos) break;
+          size_t start = idx + mlow.size();
+          size_t next_today = low.find("today:", start);
+          size_t next_tom = low.find("tomorrow:", start);
+          size_t next_marker = std::string::npos;
+          if (next_today != std::string::npos) next_marker = next_today;
+          if (next_tom != std::string::npos && (next_marker==std::string::npos || next_tom < next_marker))
+            next_marker = next_tom;
+          size_t end = (next_marker == std::string::npos) ? low.size() : next_marker;
+
+          std::string seg = raw.substr(start, end - start);
+          std::string norm;
+          bool in_sp = false;
+          for (char c : seg) {
+            if (isspace((unsigned char)c)) { if (!in_sp) { norm.push_back(' '); in_sp = true; } }
+            else { norm.push_back(c); in_sp = false; }
+          }
+          norm = trim(norm);
+          if (!norm.empty()) results.push_back(norm);
+          pos = end;
+        }
+        return results;
+      };
+
+      auto today_list = extract_all_after(raw, "Today:");
+      auto tomorrow_list = extract_all_after(raw, "Tomorrow:");
+
+      // --- Analiza wydarzeń dla danego dnia ---
+      struct DayDisplay {
+        std::vector<std::string> lines;
+        bool draw_trash = false;
+      };
+
+      auto analyze_day = [&](const std::vector<std::string> &lst) -> DayDisplay {
+        DayDisplay out;
+        if (lst.empty()) {
+          out.lines.push_back("brak wydarzeń");
+          return out;
+        }
+
+        bool has_urlop = false;
+
+        // sprawdź, czy jest "Urlop", "Urlaub"
+        for (auto &s : lst) {
+          std::string low = lower_copy(s);
+          if (low.find("urlop") != std::string::npos ||
+              low.find("urlaub") != std::string::npos) {
+            has_urlop = true;
+            break;
+          }
+        }
+
+        // przetwarzanie wydarzeń
+        for (auto &s : lst) {
+          std::string low = lower_copy(s);
+          std::string display = s;
+          bool is_trash = false;
+
+          // identyfikacja zmian
+          bool is_shift = (low.find("fruh") != std::string::npos || 
+                          low.find("früh") != std::string::npos ||
+                          low.find("spat") != std::string::npos || 
+                          low.find("spät") != std::string::npos ||
+                          low.find("nacht") != std::string::npos);
+
+          if (has_urlop && is_shift) {
+            // jeśli jest urlop → pomiń zmiany
+            continue;
+          }
+
+          // mapowanie nazw zmian
+          if (low.find("fruh") != std::string::npos || low.find("früh") != std::string::npos)
+            display = "Ranna zmiana";
+          else if (low.find("spat") != std::string::npos || low.find("spät") != std::string::npos)
+            display = "Zmiana popołudniowa";
+          else if (low.find("nacht") != std::string::npos)
+            display = "Nocna zmiana";
+
+          if (low.find("wywoz") != std::string::npos || low.find("wywóz") != std::string::npos ||
+              low.find("smieci") != std::string::npos || low.find("śmieci") != std::string::npos)
+            is_trash = true;
+
+          out.lines.push_back(display);
+          if (is_trash) out.draw_trash = true;
+        }
+
+        if (has_urlop) {
+          // zawsze dodaj "Urlop" na początek
+          out.lines.insert(out.lines.begin(), "Urlop");
+        }
+
+        return out;
+      };
+
+      auto today_disp = analyze_day(today_list);
+      auto tomorrow_disp = analyze_day(tomorrow_list);
+
+      // --- Rysowanie ---
+      it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "W KALENDARZU");
+      last_y += 20 + spacing;
+      it.line(40, last_y, 210, last_y);
+      last_y += spacing;
+
+      // DZIŚ
+      it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Dzisiaj:");
+      last_y += 15 + spacing;
+
+      if (today_disp.lines.empty()) {
+          it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "Brak wydarzeń");
+          last_y += 10 + spacing;
+      } else {
+        for (auto &line : today_disp.lines) {
+            // Sprawdź, czy w treści jest nawias
+            size_t paren_pos = line.find('(');
+            std::string main_text = line;
+            std::string extra_text;
+
+            if (paren_pos != std::string::npos) {
+                main_text = line.substr(0, paren_pos);
+                extra_text = line.substr(paren_pos);
+            }
+
+            bool is_trash = (line.find("śmieci") != std::string::npos || line.find("smieci") != std::string::npos);
+
+            if (is_trash) {
+                it.printf(50, last_y + 4, id(font_mdi_info), TextAlign::TOP_LEFT, "\U000F06CC");
+                it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
+                last_y += 12 + spacing;
+
+                if (!extra_text.empty()) {
+                    it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
+                    last_y += 12 + spacing;
+                }
+            } else {
+                it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
+                last_y += 12 + spacing;
+
+                if (!extra_text.empty()) {
+                    it.printf(65, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
+                    last_y += 12 + spacing;
+                }
+            }
+        }
+
+      last_y += 5;
+      }
+
+      // JUTRO
+      it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Jutro:");
+      last_y += 15 + spacing;
+
+      if (tomorrow_disp.lines.empty()) {
+        it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "Brak wydarzeń");
+        last_y += 10 + spacing;
+      } else {
+        for (auto &line : tomorrow_disp.lines) {
+          size_t paren_pos = line.find('(');
+          std::string main_text = line;
+          std::string extra_text;
+
+          if (paren_pos != std::string::npos) {
+              main_text = line.substr(0, paren_pos);
+              extra_text = line.substr(paren_pos);
+          }
+
+          bool is_trash = (line.find("śmieci") != std::string::npos || line.find("smieci") != std::string::npos);
+
+          if (is_trash) {
+              it.printf(50, last_y + 4, id(font_mdi_info), TextAlign::TOP_LEFT, "\U000F06CC");
+              it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
+              last_y += 12 + spacing;
+
+              if (!extra_text.empty()) {
+                  it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
+                  last_y += 12 + spacing;
+              }
+          } else {
+              it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
+              last_y += 12 + spacing;
+
+              if (!extra_text.empty()) {
+                  it.printf(65, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
+                  last_y += 12 + spacing;
+              }
+          }
+      }
+      }
+
+      // KONIEC KALENDARZA -------------------------------------
+
+      // --- Separator pionowy między kolumnami ---
+      int vertical_sep_x = 270;
+      it.line(vertical_sep_x, sep2_y + 10, vertical_sep_x, last_y + 24 + spacing);
+
+      // --- Prawa kolumna danych zewnętrznych ---
+      int right_col_x = vertical_sep_x + 20;
+      int right_y = sep2_y + 20;
+      int right_spacing = spacing;
+
+      it.printf(right_col_x, right_y, id(font_small_bold), TextAlign::TOP_LEFT, "Dane lokalne:");
+      right_y += 8 + right_spacing;
+      it.printf(right_col_x, right_y, id(font_info), TextAlign::TOP_LEFT, "Czujnik taras");
+      right_y += 16 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F050F");
+      if (!std::isnan(id(local_temp).state))
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%2.0f°C", id(local_temp).state);
+      else
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
+      right_y += 24 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F058E");
+      if (!std::isnan(id(local_humidity).state))
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%2.0f%%", id(local_humidity).state);
+      else
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
+      right_y += 24 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F029A");
+      if (!std::isnan(id(local_pressure).state))
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%.0fhPa", id(local_pressure).state);
+      else
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
+      right_y += 24 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0F37");
+      it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%s UV", uv_text.c_str());
+      right_y += 24 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0EC9");
+      if (!std::isnan(id(local_air).state))
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%.2fµg/m³", id(local_air).state);
+      else
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
+      right_y += 24 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0298"); // ikona paliwo
+      if (isnan(fuel)) it.printf(right_col_x + 40, right_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "LEX zamknięty");
+      else it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%.2f€ (LEX)", id(local_fuel).state);
+      right_y += 24 + right_spacing;
+
+      it.line(right_col_x, right_y + 10, right_col_x + 150, right_y + 10);
+      right_y += 1 + right_spacing;
+      it.printf(right_col_x, right_y, id(font_small), TextAlign::TOP_LEFT, "Tucson PHEV:");
+      right_y += 15 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F05F1");
+      if (!std::isnan(id(ev_battery).state) && !std::isnan(id(ev_range).state))
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%2.0f%% / %2.0fkm", id(ev_battery).state, id(ev_range).state);
+      else
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
+
+      right_y += 24 + right_spacing;
+
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F07CA");
+      if (!std::isnan(id(fuel_range).state))
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%2.0fkm", id(fuel_range).state);
+      else
+        it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
+
+      // --- STOPKA / STATUS ---
+      int bottom_y = 758;  // stała pozycja przy dolnej krawędzi
+      int left_margin = 40;
+
+      // WiFi signal
+      float wifi_db = id(wifi_power).state;
+      std::string wifi_icon = "\U000F092B"; // alert-outline (brak)
+      if (!std::isnan(wifi_db)) {
+        if (wifi_db > -55) wifi_icon = "\U000F0928"; // mocny
+        else if (wifi_db > -65) wifi_icon = "\U000F0925"; // dobry
+        else if (wifi_db > -75) wifi_icon = "\U000F0922"; // średni
+        else if (wifi_db > -85) wifi_icon = "\U000F091F"; // słaby
+        else wifi_icon = "\U000F092B"; // bardzo słaby / brak
+      }
+
+      it.printf(left_margin, bottom_y, id(font_mdi_info), TextAlign::BASELINE_LEFT, "%s", wifi_icon.c_str());
+      if (!std::isnan(wifi_db)) {
+        it.printf(left_margin + 24, bottom_y, id(font_info), TextAlign::BASELINE_LEFT, "%.0fdBm", wifi_db);
+      } else {
+        it.printf(left_margin + 24, bottom_y, id(font_info), TextAlign::BASELINE_LEFT, "---");
+      }
+
+      // Battery
+      float bat = id(battery_percent).state;
+      std::string bat_icon = "\U000F10CD"; // alert outline
+      if (!std::isnan(bat)) {
+        if (bat >= 90) bat_icon = "\U000F0079";
+        else if (bat >= 80) bat_icon = "\U000F0082";
+        else if (bat >= 70) bat_icon = "\U000F0081";
+        else if (bat >= 60) bat_icon = "\U000F0080";
+        else if (bat >= 50) bat_icon = "\U000F007E";
+        else if (bat >= 40) bat_icon = "\U000F007D";
+        else if (bat >= 30) bat_icon = "\U000F007C";
+        else if (bat >= 20) bat_icon = "\U000F10CD";
+        else if (bat >= 10) bat_icon = "\U000F10CD";
+      }
+
+      int battery_x = 125;
+      it.printf(battery_x, bottom_y, id(font_mdi_info), TextAlign::BASELINE_LEFT, "%s", bat_icon.c_str());
+      if (!std::isnan(bat)) {
+        it.printf(battery_x + 24, bottom_y, id(font_info), TextAlign::BASELINE_LEFT, "%.0f%%", bat);
+      } else {
+        it.printf(battery_x + 24, bottom_y, id(font_info), TextAlign::BASELINE_LEFT, "---");
+      }
+
+      // Data i godzina aktualizacji
+      auto now = id(ha_time).now();
+      if (now.is_valid()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%02d:%02d  %02d.%02d.%04d",
+                 now.hour, now.minute, now.day_of_month, now.month, now.year);
+        it.printf(440, bottom_y, id(font_info), TextAlign::BASELINE_RIGHT, "Ost. aktualizacja: %s", buf);
+      } else {
+        it.printf(440, bottom_y, id(font_info), TextAlign::BASELINE_RIGHT, "Brak danych o czasie");
+      }
+
