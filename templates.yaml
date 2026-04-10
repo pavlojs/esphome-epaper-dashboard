@@ -1,0 +1,139 @@
+- trigger:
+    - trigger: homeassistant
+      event: start
+    - trigger: state
+      entity_id: weather.forecast_dom # ← podmień na swoją encję
+    - trigger: time_pattern
+      hours: "/3"
+  action:
+    - action: weather.get_forecasts
+      target:
+        entity_id: weather.forecast_dom
+      data:
+        type: daily
+      response_variable: forecast
+  sensor:
+    # --- Dzisiaj ---
+    - name: "Forecast Today Date"
+      state: >
+        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[0].datetime) 
+            | timestamp_custom('%A, %d.%m', true) }}
+    - name: "Forecast Today Temp Max"
+      state: "{{ forecast['weather.forecast_dom'].forecast[0].temperature }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Today Precipitation"
+      state: "{{ forecast['weather.forecast_dom'].forecast[0].precipitation }}"
+      unit_of_measurement: "mm"
+    - name: "Forecast Today Conditions"
+      state: "{{ forecast['weather.forecast_dom'].forecast[0].condition }}"
+    # --- Dzień 1 ---
+    - name: "Forecast Day 1 Date"
+      state: >
+        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[1].datetime) 
+            | timestamp_custom('%A, %d.%m', true) }}
+    - name: "Forecast Day 1 Temp Max"
+      state: "{{ forecast['weather.forecast_dom'].forecast[1].temperature }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 1 Temp Min"
+      state: "{{ forecast['weather.forecast_dom'].forecast[1].templow }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 1 Conditions"
+      state: "{{ forecast['weather.forecast_dom'].forecast[1].condition }}"
+
+    # --- Dzień 2 ---
+    - name: "Forecast Day 2 Date"
+      state: >
+        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[2].datetime) 
+            | timestamp_custom('%A, %d.%m', true) }}
+    - name: "Forecast Day 2 Temp Max"
+      state: "{{ forecast['weather.forecast_dom'].forecast[2].temperature }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 2 Temp Min"
+      state: "{{ forecast['weather.forecast_dom'].forecast[2].templow }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 2 Conditions"
+      state: "{{ forecast['weather.forecast_dom'].forecast[2].condition }}"
+
+    # --- Dzień 3 ---
+    - name: "Forecast Day 3 Date"
+      state: >
+        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[3].datetime) 
+            | timestamp_custom('%A, %d.%m', true) }}
+    - name: "Forecast Day 3 Temp Max"
+      state: "{{ forecast['weather.forecast_dom'].forecast[3].temperature }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 3 Temp Min"
+      state: "{{ forecast['weather.forecast_dom'].forecast[3].templow }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 3 Conditions"
+      state: "{{ forecast['weather.forecast_dom'].forecast[3].condition }}"
+
+    # --- Dzień 4 ---
+    - name: "Forecast Day 4 Date"
+      state: >
+        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[4].datetime) 
+            | timestamp_custom('%A, %d.%m', true) }}
+    - name: "Forecast Day 4 Temp Max"
+      state: "{{ forecast['weather.forecast_dom'].forecast[4].temperature }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 4 Temp Min"
+      state: "{{ forecast['weather.forecast_dom'].forecast[4].templow }}"
+      unit_of_measurement: "°C"
+    - name: "Forecast Day 4 Conditions"
+      state: "{{ forecast['weather.forecast_dom'].forecast[4].condition }}"
+
+- trigger:
+    - trigger: homeassistant
+      event: start
+    - trigger: time_pattern
+      minutes: 20
+    - trigger: event
+      event_type: event_template_reloaded
+    - trigger: state
+      entity_id:
+        - calendar.smarthome
+        - calendar.urlopy
+        - calendar.swieta_w_niemczech
+
+  action:
+    # Pobierz wydarzenia ze wszystkich trzech kalendarzy
+    - action: calendar.get_events
+      target:
+        entity_id:
+          - calendar.smarthome
+          - calendar.urlopy
+          - calendar.swieta_w_niemczech
+      data:
+        duration:
+          days: 1
+      response_variable: agenda
+
+    # Zdefiniuj zmienne pomocnicze
+    - variables:
+        events_smarthome: "{{ agenda['calendar.smarthome']['events'] | default([]) }}"
+        events_urlopy: "{{ agenda['calendar.urlopy']['events'] | default([]) }}"
+        events_swieta: "{{ agenda['calendar.swieta_w_niemczech']['events'] | default([]) }}"
+        events_all: "{{ events_smarthome + events_urlopy + events_swieta }}"
+
+  sensor:
+    - name: "Upcoming Events"
+      unique_id: upcoming_events
+      icon: mdi:calendar-star
+      state: "{{ events_all | count }}"
+      attributes:
+        events: >
+          {%- if events_all | count > 0 -%}
+            {%- for event in events_all | sort(attribute='start') -%}
+              {%- set start_dt = event.start | as_datetime -%}
+              {%- if start_dt.date() == now().date() -%}
+                {{ start_dt | as_timestamp | timestamp_custom('Today') }}: {{ event.summary }}
+              {%- elif start_dt.date() == (now() + timedelta(days=1)).date() -%}
+                {{ start_dt | as_timestamp | timestamp_custom('Tomorrow') }}: {{ event.summary }}
+              {%- else -%}
+                {{ start_dt | as_timestamp | timestamp_custom('Other') }}: {{ event.summary }}
+              {%- endif -%}
+              {% if not loop.last %} {% endif %}
+            {%- endfor -%}
+          {%- else -%}
+            brak wydarzeń
+          {%- endif -%}
