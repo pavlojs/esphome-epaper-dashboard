@@ -88,9 +88,9 @@ WiFi signal strength icon + dBm value, battery icon + percent, last update times
 
 | Component | Notes |
 |-----------|-------|
-| **Custom PCB** | Simplifies wiring, adds battery management — [Gerber files](assets/Gerber_PCB_epaper_dashboard.zip) included |
-| **IKEA RÖDALM frame** (12×18 cm) | For a clean wall-mounted look |
-| **Outdoor sensor** (e.g. BME280 + PMS5003) | For terrace data — any HA-compatible sensor works |
+| **Custom PCB** | Simplifies wiring, adds basic reverse polarity protection via AO3401 MOSFET — [Gerber files](assets/Gerber_PCB_epaper_dashboard.zip) included. **Without the PCB there is no reverse polarity protection** — see [Electrical & Hardware Safety](SECURITY.md#electrical--hardware-safety) |
+| **IKEA RÖDALM frame** (13×18 cm) | For a clean wall-mounted look |
+| **Outdoor/indoor sensors** (e.g. BME280 + PMS5003) | For environmental data — any HA-compatible sensor works |
 
 ### Why LOLIN S3 Pro?
 
@@ -129,7 +129,7 @@ Connect the Waveshare e-Paper to the LOLIN S3 Pro:
 
 The project includes a custom PCB designed in EasyEDA (credit: WR Electro). It integrates:
 
-- **AO3401 P-MOSFET** (Q1) — routes battery power to the LOLIN board
+- **AO3401 P-MOSFET** (Q1) — routes battery power to the LOLIN board; its body diode provides basic reverse polarity protection (see [Electrical & Hardware Safety](SECURITY.md#electrical--hardware-safety))
 - **SS-12D10G5 slide switch** (U3) — hardware deep sleep enable/disable
 - **10 kΩ resistor** (R1) — MOSFET gate pull control
 - **Screw terminals** (H1) — external battery connection
@@ -470,6 +470,17 @@ state: "{{ forecast['weather.your_entity'].forecast[0].temperature }}"
 | Deep sleep switch | GPIO2 (slide switch, optional) |
 
 The display power is managed via GPIO15 — it is turned **on** at boot and turned **off** on shutdown to minimize current draw during sleep.
+
+### Deep Sleep Switch (GPIO2)
+
+The SS-12D10G5 slide switch connected to GPIO2 controls whether the device is allowed to enter deep sleep:
+
+| Switch position | Effect |
+|-----------------|--------|
+| **ON** | Normal operation — device enters deep sleep for 20 minutes after each update |
+| **OFF** | `KEEP_AWAKE` — deep sleep is disabled; device stays awake indefinitely |
+
+The OFF position is useful during **development, serial monitoring, or OTA firmware updates** — when the device is in deep sleep most of the time, OTA is only possible within the 90 s wake window. Flipping the switch to OFF keeps it reachable permanently. Flip back to ON for normal battery-powered operation.
 
 ---
 
