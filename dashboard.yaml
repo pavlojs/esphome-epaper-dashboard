@@ -9,8 +9,6 @@ esphome:
       - output.turn_on: epd_power 
       - delay: 500ms 
       - logger.log: "EPD power should be stable now"
-      # Show loading screen while waiting for data
-      - component.update: eink_display
       # Wait for API connection first — no point checking sensors before HA is connected
       - wait_until:
           condition:
@@ -30,7 +28,6 @@ esphome:
               return (has_weather || has_temp || has_calendar) && has_battery;
           timeout: 30s
       - logger.log: "Data received (or timeout) — forcing display update"
-      - lambda: 'id(initial_data_received) = true;'
       - delay: 500ms
       - component.update: eink_display
       - logger.log: "Display updated with data"
@@ -63,10 +60,6 @@ wifi:
   fast_connect: true
 
 globals:
-  - id: initial_data_received
-    type: bool
-    restore_value: no
-    initial_value: 'false'
   - id: data_updated 
     type: bool 
     restore_value: no 
@@ -472,20 +465,6 @@ display:
         {"Monday", "Pon"}, {"Tuesday", "Wt"}, {"Wednesday", "Śr"}, {"Thursday", "Czw"},
         {"Friday", "Pt"}, {"Saturday", "Sob"}, {"Sunday", "Niedz"}
       };
-
-      // --- Loader / waiting for data ---
-      if (!id(initial_data_received)) {
-        it.printf(240, 390, id(font_small_bold), TextAlign::TOP_CENTER, "AKTUALIZACJA DANYCH...");
-
-      // Show current time even during loading
-      auto time_now = id(ha_time).now();
-      if (time_now.is_valid()) {
-        char time_buf[32];
-        snprintf(time_buf, sizeof(time_buf), "%02d:%02d", time_now.hour, time_now.minute);
-        it.printf(240, 450, id(font_medium_bold), TextAlign::TOP_CENTER, "%s", time_buf);
-      }
-      return;
-      }
 
       // --- Current weather ---
       std::string cur_cond = id(ha_weather_condition).state;
