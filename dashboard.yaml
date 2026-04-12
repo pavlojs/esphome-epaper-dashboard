@@ -761,6 +761,10 @@ display:
       auto tomorrow_disp = analyze_day(tomorrow_list);
 
       // --- Rendering ---
+      int max_content_y = 728;  // hard limit: bottom_y(758) - 30px margin
+      int skipped = 0;
+      bool overflow = false;
+
       it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "W KALENDARZU");
       last_y += 20 + spacing;
       it.line(40, last_y, 210, last_y);
@@ -774,7 +778,16 @@ display:
           it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "Brak wydarzeń");
           last_y += 10 + spacing;
       } else {
-        for (auto &line : today_disp.lines) {
+        for (size_t idx = 0; idx < today_disp.lines.size(); idx++) {
+            auto &line = today_disp.lines[idx];
+
+            // Check if we have space for at least one more line
+            if (last_y + 22 > max_content_y) {
+              skipped += (today_disp.lines.size() - idx) + tomorrow_disp.lines.size();
+              overflow = true;
+              break;
+            }
+
             // Check if content has parentheses (time info)
             size_t paren_pos = line.find('(');
             std::string main_text = line;
@@ -792,7 +805,7 @@ display:
                 it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
                 last_y += 12 + spacing;
 
-                if (!extra_text.empty()) {
+                if (!extra_text.empty() && last_y + 22 <= max_content_y) {
                     it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
                     last_y += 12 + spacing;
                 }
@@ -800,62 +813,88 @@ display:
                 it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
                 last_y += 12 + spacing;
 
-                if (!extra_text.empty()) {
+                if (!extra_text.empty() && last_y + 22 <= max_content_y) {
                     it.printf(65, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
                     last_y += 12 + spacing;
                 }
             }
         }
 
-      last_y += 5;
+      if (!overflow) last_y += 5;
       }
 
       // TOMORROW
-      it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Jutro:");
-      last_y += 15 + spacing;
+      if (!overflow) {
+        // Check if we can fit at least the header + one line
+        if (last_y + 47 > max_content_y) {
+          // Can't fit Tomorrow section at all
+          skipped += tomorrow_disp.lines.size();
+          overflow = true;
+        } else {
+          it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Jutro:");
+          last_y += 15 + spacing;
 
-      if (tomorrow_disp.lines.empty()) {
-        it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "Brak wydarzeń");
-        last_y += 10 + spacing;
-      } else {
-        for (auto &line : tomorrow_disp.lines) {
-          size_t paren_pos = line.find('(');
-          std::string main_text = line;
-          std::string extra_text;
-
-          if (paren_pos != std::string::npos) {
-              main_text = line.substr(0, paren_pos);
-              extra_text = line.substr(paren_pos);
-          }
-
-          bool is_trash = (line.find("śmieci") != std::string::npos || line.find("smieci") != std::string::npos);
-
-          if (is_trash) {
-              it.printf(50, last_y + 4, id(font_mdi_info), TextAlign::TOP_LEFT, "\U000F06CC");
-              it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
-              last_y += 12 + spacing;
-
-              if (!extra_text.empty()) {
-                  it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
-                  last_y += 12 + spacing;
-              }
+          if (tomorrow_disp.lines.empty()) {
+            it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "Brak wydarzeń");
+            last_y += 10 + spacing;
           } else {
-              it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
-              last_y += 12 + spacing;
+            for (size_t idx = 0; idx < tomorrow_disp.lines.size(); idx++) {
+              auto &line = tomorrow_disp.lines[idx];
 
-              if (!extra_text.empty()) {
-                  it.printf(65, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
-                  last_y += 12 + spacing;
+              if (last_y + 22 > max_content_y) {
+                skipped += (tomorrow_disp.lines.size() - idx);
+                overflow = true;
+                break;
               }
+
+              size_t paren_pos = line.find('(');
+              std::string main_text = line;
+              std::string extra_text;
+
+              if (paren_pos != std::string::npos) {
+                  main_text = line.substr(0, paren_pos);
+                  extra_text = line.substr(paren_pos);
+              }
+
+              bool is_trash = (line.find("śmieci") != std::string::npos || line.find("smieci") != std::string::npos);
+
+              if (is_trash) {
+                  it.printf(50, last_y + 4, id(font_mdi_info), TextAlign::TOP_LEFT, "\U000F06CC");
+                  it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
+                  last_y += 12 + spacing;
+
+                  if (!extra_text.empty() && last_y + 22 <= max_content_y) {
+                      it.printf(70, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
+                      last_y += 12 + spacing;
+                  }
+              } else {
+                  it.printf(50, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", main_text.c_str());
+                  last_y += 12 + spacing;
+
+                  if (!extra_text.empty() && last_y + 22 <= max_content_y) {
+                      it.printf(65, last_y, id(font_small), TextAlign::TOP_LEFT, "%s", extra_text.c_str());
+                      last_y += 12 + spacing;
+                  }
+              }
+            }
           }
+        }
       }
+
+      // Show overflow indicator if events were skipped
+      if (skipped > 0) {
+        char skip_buf[32];
+        snprintf(skip_buf, sizeof(skip_buf), "...i %d więcej", skipped);
+        it.printf(50, last_y, id(font_info), TextAlign::TOP_LEFT, "%s", skip_buf);
+        last_y += 14 + spacing;
       }
 
       // END OF CALENDAR -------------------------------------
 
       // --- Vertical separator between columns ---
       int vertical_sep_x = 270;
-      it.line(vertical_sep_x, sep2_y + 10, vertical_sep_x, last_y + 24 + spacing);
+      int vsep_end = std::min(last_y + 24 + spacing, max_content_y);
+      it.line(vertical_sep_x, sep2_y + 10, vertical_sep_x, vsep_end);
 
       // --- Right column: external data ---
       int right_col_x = vertical_sep_x + 20;
