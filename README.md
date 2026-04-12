@@ -503,7 +503,7 @@ The OFF position is useful during **development, serial monitoring, or OTA firmw
 | Problem | Solution |
 |---------|----------|
 | **Blank display after boot** | Check SPI wiring. Verify `busy_pin` is inverted. Check GPIO15 power output. |
-| **"AKTUALIZACJA DANYCH..." stays on screen** | The device couldn't get data from HA within 30 s. Check WiFi credentials in `secrets.yaml`. Verify HA is reachable and the API is enabled. Check ESPHome logs for connection errors. |
+| **Display shows no data / all fields "b/d"** | The device booted but couldn't receive data from HA within the timeout. Check WiFi credentials in `secrets.yaml`. Verify HA is reachable and the API is enabled. Check ESPHome logs for connection errors. |
 | **Some data shows "b/d" (no data)** | The corresponding HA sensor entity doesn't exist or has no state. Check entity IDs. |
 | **Battery drains fast** | Reduce `run_duration`. Check that the display power is off during sleep. Verify deep sleep is actually entering (check logs). |
 | **Compilation error about missing fonts** | Make sure the `fonts/` directory is in your ESPHome config folder alongside `dashboard.yaml`. |
