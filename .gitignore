@@ -1,0 +1,20 @@
+# ESPHome
+secrets.yaml
+.esphome/
+
+# Build artifacts
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Python
+*.pyc
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
