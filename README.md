@@ -26,12 +26,12 @@ The dashboard is built around a few fixed layout zones — you keep what's usefu
 ## How It Works
 
 ```
-┌─────────────┐     WiFi       ┌─────────────────┐
-│  ESP32-S3   │──────────────▶│  Home Assistant │
-│  (LOLIN S3) │◀──────────────│  (API)          │
-└──────┬──────┘   sensors +    └─────────────────┘
-       │          calendar +
-       │          weather data
+┌─────────────┐      WiFi       ┌────────────────┐
+│  ESP32-S3   │ ──────────────> │ Home Assistant │
+│  (LOLIN S3) │ <────────────── │     (API)      │
+└──────┬──────┘    sensors +    └────────────────┘
+       │           calendar +
+       │           weather data
        ▼
 ┌─────────────┐
 │  Waveshare  │
@@ -142,6 +142,20 @@ The project includes a custom PCB designed in EasyEDA (credit: WR Electro). It i
 
 <p align="center">
   <img src="assets/3D_PCB.png" alt="3D PCB render" width="400">
+</p>
+
+**Physical Assembly:**
+
+<p align="center">
+  <img src="assets/img/all_components.jpg" alt="All components" width="500">
+</p>
+
+<p align="center">
+  <img src="assets/img/pcb_with_components.jpg" alt="PCB with components mounted" width="500">
+</p>
+
+<p align="center">
+  <img src="assets/img/back.jpg" alt="PCB back side" width="500">
 </p>
 
 Gerber files for PCB manufacturing: [`assets/Gerber_PCB_epaper_dashboard.zip`](assets/Gerber_PCB_epaper_dashboard.zip)
