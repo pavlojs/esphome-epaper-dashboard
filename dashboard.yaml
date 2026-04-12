@@ -9,6 +9,8 @@ esphome:
       - output.turn_on: epd_power 
       - delay: 500ms 
       - logger.log: "EPD power should be stable now"
+      # Show loading screen while waiting for data
+      - component.update: eink_display
       # Wait for API connection first — no point checking sensors before HA is connected
       - wait_until:
           condition:
@@ -79,19 +81,19 @@ deep_sleep:
     inverted: false
   wakeup_pin_mode: KEEP_AWAKE
 
-# --- SPI używane przez ekran
+# --- SPI bus used by the display
 spi:
   clk_pin: GPIO18
   mosi_pin: GPIO11
 
-# --- Wyjście do sterowania zasilaniem wyświetlacza (PWR)
+# --- Output pin for display power control (PWR)
 output:
   - platform: gpio
     pin: GPIO15
     id: epd_power
     inverted: false
 
-# --- opcjonalny sensor/stan przełącznika (pokazuje w HA)
+# --- Optional sensor / switch state (exposed to HA)
 binary_sensor:
   - platform: gpio
     pin:
@@ -101,7 +103,7 @@ binary_sensor:
     name: "Deep Sleep Switch State"
     id: deepsleep_switch
 
-# --- Sensory
+# --- Sensors
 time:
   - platform: homeassistant
     id: ha_time
@@ -120,6 +122,10 @@ sensor:
     attenuation: 12db
     filters:
       - multiply: 2.0
+      - median:
+          window_size: 5
+          send_every: 3
+          send_first_at: 3
     unit_of_measurement: "V"
 
   - platform: template
@@ -131,9 +137,31 @@ sensor:
     lambda: |-
       float v = id(battery_voltage).state;
       if (isnan(v)) return NAN;
-      float percent = (v - 3.0f) / (4.2f - 3.0f) * 100.0f;
-      if (percent > 100) percent = 100;
-      if (percent < 0) percent = 0;
+      // LiPo discharge curve lookup (voltage -> percent)
+      // Based on typical single-cell LiPo discharge profile
+      float percent;
+      if      (v >= 4.20f) percent = 100.0f;
+      else if (v >= 4.15f) percent = 95.0f;
+      else if (v >= 4.11f) percent = 90.0f;
+      else if (v >= 4.08f) percent = 85.0f;
+      else if (v >= 4.02f) percent = 80.0f;
+      else if (v >= 3.98f) percent = 75.0f;
+      else if (v >= 3.95f) percent = 70.0f;
+      else if (v >= 3.91f) percent = 65.0f;
+      else if (v >= 3.87f) percent = 60.0f;
+      else if (v >= 3.85f) percent = 55.0f;
+      else if (v >= 3.84f) percent = 50.0f;
+      else if (v >= 3.82f) percent = 45.0f;
+      else if (v >= 3.80f) percent = 40.0f;
+      else if (v >= 3.79f) percent = 35.0f;
+      else if (v >= 3.77f) percent = 30.0f;
+      else if (v >= 3.75f) percent = 25.0f;
+      else if (v >= 3.73f) percent = 20.0f;
+      else if (v >= 3.71f) percent = 15.0f;
+      else if (v >= 3.69f) percent = 10.0f;
+      else if (v >= 3.61f) percent = 5.0f;
+      else if (v >= 3.27f) percent = 2.0f;
+      else                  percent = 0.0f;
       return percent;
     on_value:
       then:
@@ -184,7 +212,7 @@ sensor:
     unit_of_measurement: "°C"
     accuracy_decimals: 1
 
-  # Dane lokalne
+  # Local data
   - platform: homeassistant
     id: local_temp
     entity_id: sensor.taras_temperature
@@ -222,7 +250,7 @@ sensor:
     entity_id: sensor.donetick_open_tasks
     internal: true
 
-  # Dane zewnętrzne
+  # External data
   - platform: homeassistant
     id: local_fuel
     entity_id: sensor.industriestr_34_super
@@ -306,7 +334,7 @@ text_sensor:
             ESP_LOGI("CALENDAR", "data_updated flag set");
         - logger.log: "Calendar data received"
 
-# --- Fonty
+# --- Fonts
 font:
   - file: "fonts/NotoSans-Regular.ttf"
     id: font_info
@@ -400,7 +428,7 @@ font:
     size: 18
     glyphs: *mdi-weather-glyphs
 
-# --- Wyświetlacz Waveshare (7.5in V2 monochrome)
+# --- Waveshare display (7.5in V2 monochrome)
 display:
   - platform: waveshare_epaper
     id: eink_display
@@ -415,7 +443,7 @@ display:
     update_interval: never
     rotation: 90
     lambda: |-
-      // --- Funkcja pomocnicza: mapa ikon pogodowych MDI ---
+      // --- Helper: MDI weather icon mapping ---
       std::map<std::string, std::string> weather_icon_map {
         {"cloudy", "\U000F0590"}, {"cloudy-alert", "\U000F0F2F"}, {"cloudy-arrow-right", "\U000F0E6E"},
         {"fog", "\U000F0591"}, {"hail", "\U000F0592"}, {"hazy", "\U000F0F30"}, {"hurricane", "\U000F0898"},
@@ -439,17 +467,17 @@ display:
 
       float fuel = id(local_fuel).state;
 
-      // --- Mapowanie angielskich dni tygodnia na polskie skróty ---
+      // --- Map English weekday names to Polish abbreviations ---
       std::map<std::string, std::string> weekday_pl {
         {"Monday", "Pon"}, {"Tuesday", "Wt"}, {"Wednesday", "Śr"}, {"Thursday", "Czw"},
         {"Friday", "Pt"}, {"Saturday", "Sob"}, {"Sunday", "Niedz"}
       };
 
-      // --- Loader / oczekiwanie na dane ---
+      // --- Loader / waiting for data ---
       if (!id(initial_data_received)) {
         it.printf(240, 390, id(font_small_bold), TextAlign::TOP_CENTER, "AKTUALIZACJA DANYCH...");
 
-      // Wyświetl aktualny czas nawet podczas ładowania
+      // Show current time even during loading
       auto time_now = id(ha_time).now();
       if (time_now.is_valid()) {
         char time_buf[32];
@@ -459,7 +487,7 @@ display:
       return;
       }
 
-      // --- Aktualna pogoda ---
+      // --- Current weather ---
       std::string cur_cond = id(ha_weather_condition).state;
       std::string cur_icon = "?";
       auto itmap = weather_icon_map.find(cur_cond);
@@ -483,13 +511,13 @@ display:
       else
         it.printf(335, 185, id(font_small_bold), TextAlign::TOP_LEFT, "--%");
 
-      // --- Separator poziomy (3px) ---
+      // --- Horizontal separator (3px) ---
       int sep_y = 225;
       it.line(40, sep_y, 440, sep_y);
       it.line(40, sep_y - 1, 440, sep_y - 1);
       it.line(40, sep_y + 1, 440, sep_y + 1);
 
-      // --- 4-dniowa prognoza ---
+      // --- 4-day forecast ---
       int base_x = 90;
       int col_spacing = 100;
       int day_y = sep_y + 12;
@@ -507,7 +535,7 @@ display:
         else if (i == 3) { t = id(ha_forecast_3_temp).state; cond = id(ha_forecast_3_condition).state; dt = id(ha_forecast_3_datetime).state; }
         else if (i == 4) { t = id(ha_forecast_4_temp).state; cond = id(ha_forecast_4_condition).state; dt = id(ha_forecast_4_datetime).state; }
 
-        // Wyciągamy tylko dzień tygodnia
+        // Extract weekday name only
         std::string dayname = dt;
         size_t comma = dt.find(',');
         if (comma != std::string::npos) {
@@ -516,7 +544,7 @@ display:
           if (wd_it != weekday_pl.end()) dayname = wd_it->second;
         }
 
-        // Ikonka
+        // Icon
         std::string ficon = "?";
         auto f_it = weather_icon_map.find(cond);
         if (f_it != weather_icon_map.end()) ficon = f_it->second;
@@ -527,17 +555,17 @@ display:
         else it.printf(cx, temp_y, id(font_small_bold), TextAlign::TOP_CENTER, "%.0f°C", t);
       }
 
-      // --- Separator poziomy pod prognozą ---
+      // --- Horizontal separator below forecast ---
       int sep2_y = temp_y + 40;
       it.line(40, sep2_y, 440, sep2_y);
       it.line(40, sep2_y - 1, 440, sep2_y - 1);
       it.line(40, sep2_y + 1, 440, sep2_y + 1);
 
-      // --- Lewa kolumna danych lokalnych ---
+      // --- Left column: local data ---
       int last_y = sep2_y + 20;
       int spacing = 10;
 
-      // --- Pobranie aktualnej daty z HA ---
+      // --- Get current date from HA ---
       auto time_now = id(ha_time).now();
       if (!time_now.is_valid()) {
         it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Brak danych o czasie");
@@ -604,11 +632,11 @@ display:
 
       last_y += 32 + spacing;
 
-      // KALENDARZ ----------------------------------------
+      // CALENDAR ----------------------------------------
 
       std::string raw = id(ha_upcoming_raw).state;
 
-      // --- Pomocnicze funkcje ---
+      // --- Helper functions ---
       auto trim = [](const std::string &s) {
         size_t a=0; while (a<s.size() && isspace((unsigned char)s[a])) a++;
         size_t b=s.size(); while (b>a && isspace((unsigned char)s[b-1])) b--;
@@ -657,7 +685,7 @@ display:
       auto today_list = extract_all_after(raw, "Today:");
       auto tomorrow_list = extract_all_after(raw, "Tomorrow:");
 
-      // --- Analiza wydarzeń dla danego dnia ---
+      // --- Parse events for a given day ---
       struct DayDisplay {
         std::vector<std::string> lines;
         bool draw_trash = false;
@@ -672,7 +700,7 @@ display:
 
         bool has_urlop = false;
 
-        // sprawdź, czy jest "Urlop", "Urlaub"
+        // Check for "Urlop" (vacation) / "Urlaub"
         for (auto &s : lst) {
           std::string low = lower_copy(s);
           if (low.find("urlop") != std::string::npos ||
@@ -682,25 +710,30 @@ display:
           }
         }
 
-        // przetwarzanie wydarzeń
+        // Process events
         for (auto &s : lst) {
           std::string low = lower_copy(s);
           std::string display = s;
           bool is_trash = false;
 
-          // identyfikacja zmian
+          // Identify work shifts
           bool is_shift = (low.find("fruh") != std::string::npos || 
                           low.find("früh") != std::string::npos ||
                           low.find("spat") != std::string::npos || 
                           low.find("spät") != std::string::npos ||
                           low.find("nacht") != std::string::npos);
-
+          // Skip vacation events themselves (re-added as "Urlop" at the end)
+          bool is_vacation = (low.find("urlop") != std::string::npos ||
+                              low.find("urlaub") != std::string::npos);
+          if (is_vacation) {
+            continue;
+          }
           if (has_urlop && is_shift) {
-            // jeśli jest urlop → pomiń zmiany
+            // If on vacation -> skip shifts
             continue;
           }
 
-          // mapowanie nazw zmian
+          // Map shift names
           if (low.find("fruh") != std::string::npos || low.find("früh") != std::string::npos)
             display = "Ranna zmiana";
           else if (low.find("spat") != std::string::npos || low.find("spät") != std::string::npos)
@@ -717,7 +750,7 @@ display:
         }
 
         if (has_urlop) {
-          // zawsze dodaj "Urlop" na początek
+          // Always add "Urlop" (vacation) at the top
           out.lines.insert(out.lines.begin(), "Urlop");
         }
 
@@ -727,13 +760,13 @@ display:
       auto today_disp = analyze_day(today_list);
       auto tomorrow_disp = analyze_day(tomorrow_list);
 
-      // --- Rysowanie ---
+      // --- Rendering ---
       it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "W KALENDARZU");
       last_y += 20 + spacing;
       it.line(40, last_y, 210, last_y);
       last_y += spacing;
 
-      // DZIŚ
+      // TODAY
       it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Dzisiaj:");
       last_y += 15 + spacing;
 
@@ -742,7 +775,7 @@ display:
           last_y += 10 + spacing;
       } else {
         for (auto &line : today_disp.lines) {
-            // Sprawdź, czy w treści jest nawias
+            // Check if content has parentheses (time info)
             size_t paren_pos = line.find('(');
             std::string main_text = line;
             std::string extra_text;
@@ -777,7 +810,7 @@ display:
       last_y += 5;
       }
 
-      // JUTRO
+      // TOMORROW
       it.printf(50, last_y, id(font_small_bold), TextAlign::TOP_LEFT, "Jutro:");
       last_y += 15 + spacing;
 
@@ -818,13 +851,13 @@ display:
       }
       }
 
-      // KONIEC KALENDARZA -------------------------------------
+      // END OF CALENDAR -------------------------------------
 
-      // --- Separator pionowy między kolumnami ---
+      // --- Vertical separator between columns ---
       int vertical_sep_x = 270;
       it.line(vertical_sep_x, sep2_y + 10, vertical_sep_x, last_y + 24 + spacing);
 
-      // --- Prawa kolumna danych zewnętrznych ---
+      // --- Right column: external data ---
       int right_col_x = vertical_sep_x + 20;
       int right_y = sep2_y + 20;
       int right_spacing = spacing;
@@ -866,7 +899,7 @@ display:
         it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
       right_y += 24 + right_spacing;
 
-      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0298"); // ikona paliwo
+      it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0298"); // fuel icon
       if (isnan(fuel)) it.printf(right_col_x + 40, right_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "LEX zamknięty");
       else it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%.2f€ (LEX)", id(local_fuel).state);
       right_y += 24 + right_spacing;
@@ -890,19 +923,19 @@ display:
       else
         it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "b/d");
 
-      // --- STOPKA / STATUS ---
-      int bottom_y = 758;  // stała pozycja przy dolnej krawędzi
+      // --- FOOTER / STATUS ---
+      int bottom_y = 758;  // fixed position at bottom edge
       int left_margin = 40;
 
       // WiFi signal
       float wifi_db = id(wifi_power).state;
-      std::string wifi_icon = "\U000F092B"; // alert-outline (brak)
+      std::string wifi_icon = "\U000F092B"; // alert-outline (no signal)
       if (!std::isnan(wifi_db)) {
-        if (wifi_db > -55) wifi_icon = "\U000F0928"; // mocny
-        else if (wifi_db > -65) wifi_icon = "\U000F0925"; // dobry
-        else if (wifi_db > -75) wifi_icon = "\U000F0922"; // średni
-        else if (wifi_db > -85) wifi_icon = "\U000F091F"; // słaby
-        else wifi_icon = "\U000F092B"; // bardzo słaby / brak
+        if (wifi_db > -55) wifi_icon = "\U000F0928"; // strong
+        else if (wifi_db > -65) wifi_icon = "\U000F0925"; // good
+        else if (wifi_db > -75) wifi_icon = "\U000F0922"; // moderate
+        else if (wifi_db > -85) wifi_icon = "\U000F091F"; // weak
+        else wifi_icon = "\U000F092B"; // very weak / no signal
       }
 
       it.printf(left_margin, bottom_y, id(font_mdi_info), TextAlign::BASELINE_LEFT, "%s", wifi_icon.c_str());
@@ -914,7 +947,7 @@ display:
 
       // Battery
       float bat = id(battery_percent).state;
-      std::string bat_icon = "\U000F10CD"; // alert outline
+      std::string bat_icon = "\U000F10CD"; // alert-outline
       if (!std::isnan(bat)) {
         if (bat >= 90) bat_icon = "\U000F0079";
         else if (bat >= 80) bat_icon = "\U000F0082";
@@ -923,8 +956,9 @@ display:
         else if (bat >= 50) bat_icon = "\U000F007E";
         else if (bat >= 40) bat_icon = "\U000F007D";
         else if (bat >= 30) bat_icon = "\U000F007C";
-        else if (bat >= 20) bat_icon = "\U000F10CD";
-        else if (bat >= 10) bat_icon = "\U000F10CD";
+        else if (bat >= 20) bat_icon = "\U000F007B";
+        else if (bat >= 15) bat_icon = "\U000F007A"; // (low warning)
+        // below 15% -> alert icon (default)
       }
 
       int battery_x = 125;
@@ -935,7 +969,7 @@ display:
         it.printf(battery_x + 24, bottom_y, id(font_info), TextAlign::BASELINE_LEFT, "---");
       }
 
-      // Data i godzina aktualizacji
+      // Last update date and time
       auto now = id(ha_time).now();
       if (now.is_valid()) {
         char buf[32];
