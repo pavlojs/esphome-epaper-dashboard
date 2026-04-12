@@ -2,7 +2,7 @@
     - trigger: homeassistant
       event: start
     - trigger: state
-      entity_id: weather.forecast_dom # ← podmień na swoją encję
+      entity_id: weather.forecast_dom # ← replace with your weather entity
     - trigger: time_pattern
       hours: "/3"
   action:
@@ -13,7 +13,7 @@
         type: daily
       response_variable: forecast
   sensor:
-    # --- Dzisiaj ---
+    # --- Today ---
     - name: "Forecast Today Date"
       state: >
         {{ as_timestamp(forecast['weather.forecast_dom'].forecast[0].datetime) 
@@ -26,7 +26,7 @@
       unit_of_measurement: "mm"
     - name: "Forecast Today Conditions"
       state: "{{ forecast['weather.forecast_dom'].forecast[0].condition }}"
-    # --- Dzień 1 ---
+    # --- Day 1 ---
     - name: "Forecast Day 1 Date"
       state: >
         {{ as_timestamp(forecast['weather.forecast_dom'].forecast[1].datetime) 
@@ -40,7 +40,7 @@
     - name: "Forecast Day 1 Conditions"
       state: "{{ forecast['weather.forecast_dom'].forecast[1].condition }}"
 
-    # --- Dzień 2 ---
+    # --- Day 2 ---
     - name: "Forecast Day 2 Date"
       state: >
         {{ as_timestamp(forecast['weather.forecast_dom'].forecast[2].datetime) 
@@ -54,7 +54,7 @@
     - name: "Forecast Day 2 Conditions"
       state: "{{ forecast['weather.forecast_dom'].forecast[2].condition }}"
 
-    # --- Dzień 3 ---
+    # --- Day 3 ---
     - name: "Forecast Day 3 Date"
       state: >
         {{ as_timestamp(forecast['weather.forecast_dom'].forecast[3].datetime) 
@@ -68,7 +68,7 @@
     - name: "Forecast Day 3 Conditions"
       state: "{{ forecast['weather.forecast_dom'].forecast[3].condition }}"
 
-    # --- Dzień 4 ---
+    # --- Day 4 ---
     - name: "Forecast Day 4 Date"
       state: >
         {{ as_timestamp(forecast['weather.forecast_dom'].forecast[4].datetime) 
@@ -96,7 +96,7 @@
         - calendar.swieta_w_niemczech
 
   action:
-    # Pobierz wydarzenia ze wszystkich trzech kalendarzy
+    # Fetch events from all three calendars
     - action: calendar.get_events
       target:
         entity_id:
@@ -105,10 +105,10 @@
           - calendar.swieta_w_niemczech
       data:
         duration:
-          days: 1
+          days: 2
       response_variable: agenda
 
-    # Zdefiniuj zmienne pomocnicze
+    # Define helper variables
     - variables:
         events_smarthome: "{{ agenda['calendar.smarthome']['events'] | default([]) }}"
         events_urlopy: "{{ agenda['calendar.urlopy']['events'] | default([]) }}"
