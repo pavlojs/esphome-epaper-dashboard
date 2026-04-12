@@ -46,6 +46,36 @@ This project runs on an ESP32 microcontroller connected to your home network and
 - If the device is in a publicly accessible location, be aware that the USB-C port allows reflashing
 - The deep sleep switch (GPIO2) can be toggled physically — consider placement carefully
 
+### Electrical & Hardware Safety
+
+This project involves a LiPo battery and a custom PCB. Follow these precautions to avoid damaging hardware or causing a fire:
+
+**LiPo battery**
+- **Always observe correct polarity** when connecting the battery — reverse polarity will likely destroy the LOLIN board and may cause a fire or explosion
+- Do not charge an unattended LiPo battery — the LOLIN S3 Pro has a built-in TP4054/compatible charger, which is rated for up to the board's maximum charge current; use an appropriately rated cell (minimum 500 mAh)
+- Do not use a damaged, swollen, or punctured LiPo — dispose of it safely
+- Store at approximately 50% charge if unused for an extended period
+
+**PCB — AO3401 P-MOSFET (Q1)**
+- The P-channel MOSFET on the custom PCB acts as a high-side power switch between the battery and the LOLIN board
+- Its body diode blocks reverse current flow from the board back into the battery in unexpected conditions, providing a basic level of protection
+- However, the PCB does **not** include a dedicated reverse polarity protection circuit — connecting the battery with reversed polarity at the screw terminals will bypass the MOSFET's protection and may damage components
+- The 10 kΩ gate pull resistor (R1) ensures the MOSFET stays OFF when no control signal is applied, preventing accidental power-on
+
+**Slide switch (SS-12D10G5 — U3)**
+- This switch is wired to GPIO2 only — it controls whether the firmware allows deep sleep, not battery power
+- The battery remains connected at all times regardless of switch position
+- There is no hardware power cut-off; to fully disconnect the battery, unplug it from the screw terminal (PCB) or the JST connector (LOLIN board)
+
+**Reverse polarity protection — without PCB**
+- When connecting the battery **directly to the LOLIN S3 Pro** (without the custom PCB), there is no dedicated reverse polarity protection
+- The AO3401 MOSFET on the PCB provides incidental protection via its body diode; without the PCB this is absent
+- Always verify polarity before connecting the battery — reversed polarity will likely destroy the charging IC and/or the ESP32-S3
+
+**ADC input (GPIO3)**
+- The battery voltage divider (×2) is designed for a single-cell LiPo range (3.0–4.2 V at the cell = up to 4.2 V into the ADC after division)
+- Do **not** connect voltages above 3.3 V directly to GPIO3 without the divider — ESP32-S3 GPIO pins are not 5 V tolerant
+
 ### What This Project Does NOT Do
 
 - It does **not** store any personal data beyond what's displayed on screen
