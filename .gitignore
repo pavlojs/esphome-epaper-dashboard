@@ -2,6 +2,11 @@
 secrets.yaml
 .esphome/
 
+# Private local overrides (contain personal entity IDs, device names, etc.)
+# Copy dashboard.yaml → dashboard.local.yaml and templates.yaml → templates.local.yaml
+# then fill in your real entity IDs in the *.local.yaml files.
+*.local.yaml
+
 # Build artifacts
 .pio/
 .pioenvs/

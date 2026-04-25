@@ -1,6 +1,41 @@
+substitutions:
+  # --- Device identity ---
+  device_name: dashboard
+  device_friendly_name: "Living Room Info Frame"
+
+  # --- Home Assistant entities ---
+  # Weather: replace with your HA weather entity (e.g. weather.forecast_home)
+  ha_weather_entity: weather.forecast_home
+
+  # Outdoor sensors (e.g. terrace / garden sensor)
+  ha_outdoor_temp_entity: sensor.outdoor_temperature
+  ha_outdoor_humidity_entity: sensor.outdoor_humidity
+  ha_outdoor_pressure_entity: sensor.outdoor_pressure
+  ha_outdoor_air_entity: sensor.outdoor_pm2_5
+
+  # Indoor sensors (e.g. living room)
+  ha_indoor_temp_entity: sensor.living_room_temperature
+  ha_indoor_humidity_entity: sensor.living_room_humidity
+
+  # Misc sensors
+  ha_tasks_entity: sensor.open_tasks
+  ha_fuel_price_entity: sensor.fuel_price_super
+  ha_currency_entity: sensor.eur_pln
+
+  # EV / car sensors
+  ha_ev_battery_entity: sensor.ev_battery_level
+  ha_ev_range_entity: sensor.ev_range
+  ha_fuel_range_entity: sensor.fuel_driving_range
+
+  # --- Display labels ---
+  label_outdoor_sensor: "Outdoor sensor"
+  label_fuel_station: "Fuel station"
+  label_fuel_closed: "Station closed"
+  label_car_name: "Car:"
+
 esphome:
-  name: dashboard
-  friendly_name: Living Room Info Frame
+  name: ${device_name}
+  friendly_name: ${device_friendly_name}
   name_add_mac_suffix: false
   on_boot:
     priority: 600
@@ -130,31 +165,35 @@ sensor:
     lambda: |-
       float v = id(battery_voltage).state;
       if (isnan(v)) return NAN;
-      // LiPo discharge curve lookup (voltage -> percent)
-      // Based on typical single-cell LiPo discharge profile
+      // LiPo discharge curve calibrated for under-load readings
+      // ESP32-S3 draws ~150-250mA so measured voltage is lower than open-circuit
+      // Top flattened: under load you won't see much above 4.05V even at full charge
       float percent;
-      if      (v >= 4.20f) percent = 100.0f;
-      else if (v >= 4.15f) percent = 95.0f;
-      else if (v >= 4.11f) percent = 90.0f;
-      else if (v >= 4.08f) percent = 85.0f;
-      else if (v >= 4.02f) percent = 80.0f;
-      else if (v >= 3.98f) percent = 75.0f;
-      else if (v >= 3.95f) percent = 70.0f;
-      else if (v >= 3.91f) percent = 65.0f;
-      else if (v >= 3.87f) percent = 60.0f;
-      else if (v >= 3.85f) percent = 55.0f;
-      else if (v >= 3.84f) percent = 50.0f;
-      else if (v >= 3.82f) percent = 45.0f;
-      else if (v >= 3.80f) percent = 40.0f;
-      else if (v >= 3.79f) percent = 35.0f;
-      else if (v >= 3.77f) percent = 30.0f;
-      else if (v >= 3.75f) percent = 25.0f;
-      else if (v >= 3.73f) percent = 20.0f;
-      else if (v >= 3.71f) percent = 15.0f;
-      else if (v >= 3.69f) percent = 10.0f;
-      else if (v >= 3.61f) percent = 5.0f;
+      if      (v >= 4.05f) percent = 100.0f;
+      else if (v >= 4.00f) percent = 95.0f;
+      else if (v >= 3.96f) percent = 90.0f;
+      else if (v >= 3.93f) percent = 85.0f;
+      else if (v >= 3.90f) percent = 80.0f;
+      else if (v >= 3.87f) percent = 75.0f;
+      else if (v >= 3.85f) percent = 70.0f;
+      else if (v >= 3.84f) percent = 65.0f;
+      else if (v >= 3.82f) percent = 60.0f;
+      else if (v >= 3.80f) percent = 55.0f;
+      else if (v >= 3.79f) percent = 50.0f;
+      else if (v >= 3.77f) percent = 45.0f;
+      else if (v >= 3.75f) percent = 40.0f;
+      else if (v >= 3.73f) percent = 35.0f;
+      else if (v >= 3.71f) percent = 30.0f;
+      else if (v >= 3.69f) percent = 25.0f;
+      else if (v >= 3.67f) percent = 20.0f;
+      else if (v >= 3.63f) percent = 15.0f;
+      else if (v >= 3.59f) percent = 10.0f;
+      else if (v >= 3.50f) percent = 5.0f;
       else if (v >= 3.27f) percent = 2.0f;
       else                  percent = 0.0f;
+      // Clamp to 0-100 range
+      if (percent > 100.0f) percent = 100.0f;
+      if (percent < 0.0f) percent = 0.0f;
       return percent;
     on_value:
       then:
@@ -162,7 +201,7 @@ sensor:
 
   - platform: homeassistant
     id: ha_weather_temperature
-    entity_id: weather.forecast_dom
+    entity_id: ${ha_weather_entity}
     attribute: temperature
     internal: true
     unit_of_measurement: "°C"
@@ -170,7 +209,7 @@ sensor:
 
   - platform: homeassistant
     id: ha_weather_uv
-    entity_id: weather.forecast_dom
+    entity_id: ${ha_weather_entity}
     attribute: uv_index
     internal: true
 
@@ -208,71 +247,71 @@ sensor:
   # Local data
   - platform: homeassistant
     id: local_temp
-    entity_id: sensor.taras_temperature
+    entity_id: ${ha_outdoor_temp_entity}
     internal: true
     unit_of_measurement: "°C"
     accuracy_decimals: 1
   - platform: homeassistant
     id: local_humidity
-    entity_id: sensor.taras_humidity
+    entity_id: ${ha_outdoor_humidity_entity}
     internal: true
     unit_of_measurement: "%"
   - platform: homeassistant
     id: local_pressure
-    entity_id: sensor.taras_pressure
+    entity_id: ${ha_outdoor_pressure_entity}
     internal: true
     unit_of_measurement: "hPa"
   - platform: homeassistant
     id: local_air
-    entity_id: sensor.taras_pm2_5
+    entity_id: ${ha_outdoor_air_entity}
     internal: true
     unit_of_measurement: "µg/m³"
   - platform: homeassistant
     id: livingroom_temp
-    entity_id: sensor.esphome_web_d57124_living_room_temperature
+    entity_id: ${ha_indoor_temp_entity}
     internal: true
     unit_of_measurement: "°C"
     accuracy_decimals: 1
   - platform: homeassistant
     id: livingroom_humidity
-    entity_id: sensor.esphome_web_d57124_living_room_humidity
+    entity_id: ${ha_indoor_humidity_entity}
     internal: true
     unit_of_measurement: "%"
   - platform: homeassistant
     id: home_tasks
-    entity_id: sensor.donetick_open_tasks
+    entity_id: ${ha_tasks_entity}
     internal: true
 
   # External data
   - platform: homeassistant
     id: local_fuel
-    entity_id: sensor.industriestr_34_super
+    entity_id: ${ha_fuel_price_entity}
     internal: true
     unit_of_measurement: "€"
   - platform: homeassistant
     id: eur_pln
-    entity_id: sensor.eur_pln
+    entity_id: ${ha_currency_entity}
     internal: true
   - platform: homeassistant
     id: ev_battery
-    entity_id: sensor.tucson_ev_battery_level
+    entity_id: ${ha_ev_battery_entity}
     internal: true
     unit_of_measurement: "%"
   - platform: homeassistant
     id: ev_range
-    entity_id: sensor.tucson_ev_range
+    entity_id: ${ha_ev_range_entity}
     internal: true
     unit_of_measurement: "km"
   - platform: homeassistant
     id: fuel_range
-    entity_id: sensor.tucson_fuel_driving_range
+    entity_id: ${ha_fuel_range_entity}
     internal: true
     unit_of_measurement: "km"
 
 text_sensor:
   - platform: homeassistant
     id: ha_weather_condition
-    entity_id: weather.forecast_dom
+    entity_id: ${ha_weather_entity}
     internal: true
     on_value:
       then:
@@ -882,7 +921,7 @@ display:
 
       it.printf(right_col_x, right_y, id(font_small_bold), TextAlign::TOP_LEFT, "Dane lokalne:");
       right_y += 8 + right_spacing;
-      it.printf(right_col_x, right_y, id(font_info), TextAlign::TOP_LEFT, "Czujnik taras");
+      it.printf(right_col_x, right_y, id(font_info), TextAlign::TOP_LEFT, "${label_outdoor_sensor}");
       right_y += 16 + right_spacing;
 
       it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F050F");
@@ -918,13 +957,13 @@ display:
       right_y += 24 + right_spacing;
 
       it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F0298"); // fuel icon
-      if (isnan(fuel)) it.printf(right_col_x + 40, right_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "LEX zamknięty");
-      else it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%.2f€ (LEX)", id(local_fuel).state);
+      if (isnan(fuel)) it.printf(right_col_x + 40, right_y + 2, id(font_small_bold), TextAlign::TOP_LEFT, "${label_fuel_closed}");
+      else it.printf(right_col_x + 40, right_y + 3, id(font_small_bold), TextAlign::TOP_LEFT, "%.2f€ (${label_fuel_station})", id(local_fuel).state);
       right_y += 24 + right_spacing;
 
       it.line(right_col_x, right_y + 10, right_col_x + 150, right_y + 10);
       right_y += 1 + right_spacing;
-      it.printf(right_col_x, right_y, id(font_small), TextAlign::TOP_LEFT, "Tucson PHEV:");
+      it.printf(right_col_x, right_y, id(font_small), TextAlign::TOP_LEFT, "${label_car_name}");
       right_y += 15 + right_spacing;
 
       it.printf(right_col_x, right_y, id(font_mdi_medium), TextAlign::TOP_LEFT, "\U000F05F1");

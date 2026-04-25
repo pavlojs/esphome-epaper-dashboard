@@ -170,21 +170,21 @@ Gerber files for PCB manufacturing: [`assets/Gerber_PCB_epaper_dashboard.zip`](a
 |-------------|---------|
 | **Home Assistant** | Any installation method (HAOS, Docker, Core, Supervised) |
 | **ESPHome** | As HA add-on or standalone CLI |
-| **Weather integration** | e.g. [Met.no](https://www.home-assistant.io/integrations/met/) — entity: `weather.forecast_dom` |
+| **Weather integration** | e.g. [Met.no](https://www.home-assistant.io/integrations/met/) — entity: `weather.forecast_home` (or similar) |
 | **Calendar integration(s)** | Optional — up to 3 calendars for events/shifts/holidays |
 
 ### Optional Integrations
 
 These are used in the default config but can be removed or replaced:
 
-| Integration | Entity | Purpose |
-|-------------|--------|---------|
-| Outdoor sensor | `sensor.taras_*` | Temperature, humidity, pressure, PM2.5 |
-| Indoor sensor | `sensor.esphome_web_d57124_*` | Living room temp & humidity |
-| Hyundai/Kia Connect | `sensor.tucson_*` | EV battery, electric range, fuel range |
-| Tankerkoenig | `sensor.industriestr_34_super` | Local fuel price (€) |
-| Currency exchange | `sensor.eur_pln` | EUR → PLN rate |
-| Donetick | `sensor.donetick_open_tasks` | Open household tasks |
+| Integration | Substitution variable | Purpose |
+|-------------|----------------------|----------|
+| Outdoor sensor | `ha_outdoor_temp/humidity/pressure/air_entity` | Temperature, humidity, pressure, PM2.5 |
+| Indoor sensor | `ha_indoor_temp_entity`, `ha_indoor_humidity_entity` | Indoor temp & humidity |
+| EV / car integration | `ha_ev_battery_entity`, `ha_ev_range_entity`, `ha_fuel_range_entity` | EV battery, electric range, fuel range |
+| Fuel price sensor | `ha_fuel_price_entity` | Local fuel price (€) |
+| Currency exchange | `ha_currency_entity` | Exchange rate |
+| Task tracker | `ha_tasks_entity` | Open household tasks |
 
 ---
 
@@ -209,7 +209,7 @@ These are used in the default config but can be removed or replaced:
    wifi_password: "YourWiFiPassword"
    ```
 
-4. **Edit `dashboard.yaml`** — replace entity IDs with your own (see [Customization](#customization))
+4. **Edit `dashboard.yaml`** — fill in the `substitutions:` block at the top of the file with your own entity IDs and labels (see [Customization](#customization))
 
 5. **Flash** the LOLIN S3 Pro:
    - Via ESPHome Dashboard: upload `dashboard.yaml`, click Install
@@ -245,7 +245,7 @@ New to Home Assistant or ESPHome? Here's a step-by-step walkthrough.
 1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **Meteorologisk institutt (Met.no)** (or your preferred weather provider)
 3. Configure it with your home coordinates
-4. Note the entity name (e.g., `weather.forecast_dom`)
+4. Note the entity name (e.g., `weather.forecast_home`)
 
 ### Step 3: Find Your Entity IDs
 
@@ -254,7 +254,7 @@ Entity IDs are how Home Assistant identifies each sensor, switch, or device.
 1. Go to **Developer Tools → States** (in your HA sidebar)
 2. Use the search/filter to find sensors you want to display
 3. The entity ID looks like `sensor.living_room_temperature`
-4. Replace the entity IDs in `dashboard.yaml` with your own
+4. Set your entity IDs in the `substitutions:` block at the top of `dashboard.yaml`
 
 ### Step 4: Prepare the Hardware
 
@@ -285,49 +285,47 @@ The `templates.yaml` file creates sensors that process weather forecast data int
 
 ### Entity ID Reference
 
-Every sensor in `dashboard.yaml` can be replaced with your own. Here's the full list:
+All entity IDs and display labels are configured in the `substitutions:` block at the **top of `dashboard.yaml`**. You only need to edit that one block — no need to touch individual sensor definitions.
 
-| Variable in YAML | Default Entity ID | Purpose | Required? |
+| Substitution variable | Example value | Purpose | Required? |
 |---|---|---|---|
-| `ha_weather_temperature` | `weather.forecast_dom` (attribute: temperature) | Current temperature | **Yes** |
-| `ha_weather_condition` | `weather.forecast_dom` | Weather condition (cloudy, sunny, etc.) | **Yes** |
-| `ha_weather_uv` | `weather.forecast_dom` (attribute: uv_index) | UV index | No |
-| `ha_today_rain` | `sensor.forecast_today_precipitation` | Today's precipitation (mm) | No |
-| `ha_forecast_1-4_*` | `sensor.forecast_day_*` | 4-day forecast (from `templates.yaml`) | No |
-| `local_temp` | `sensor.taras_temperature` | Outdoor temperature | No |
-| `local_humidity` | `sensor.taras_humidity` | Outdoor humidity | No |
-| `local_pressure` | `sensor.taras_pressure` | Atmospheric pressure | No |
-| `local_air` | `sensor.taras_pm2_5` | PM2.5 air quality | No |
-| `livingroom_temp` | `sensor.esphome_web_d57124_living_room_temperature` | Indoor temperature | No |
-| `livingroom_humidity` | `sensor.esphome_web_d57124_living_room_humidity` | Indoor humidity | No |
-| `home_tasks` | `sensor.donetick_open_tasks` | Open tasks count | No |
-| `local_fuel` | `sensor.industriestr_34_super` | Local fuel price (€) | No |
-| `eur_pln` | `sensor.eur_pln` | EUR → PLN exchange rate | No |
-| `ev_battery` | `sensor.tucson_ev_battery_level` | EV battery (%) | No |
-| `ev_range` | `sensor.tucson_ev_range` | EV electric range (km) | No |
-| `fuel_range` | `sensor.tucson_fuel_driving_range` | Fuel range (km) | No |
-| Calendar | `calendar.smarthome`, `calendar.urlopy`, `calendar.swieta_w_niemczech` | 3 calendar sources | No |
+| `ha_weather_entity` | `weather.forecast_home` | Weather entity (temperature, condition, UV) | **Yes** |
+| `ha_outdoor_temp_entity` | `sensor.garden_temperature` | Outdoor temperature | No |
+| `ha_outdoor_humidity_entity` | `sensor.garden_humidity` | Outdoor humidity | No |
+| `ha_outdoor_pressure_entity` | `sensor.garden_pressure` | Atmospheric pressure | No |
+| `ha_outdoor_air_entity` | `sensor.garden_pm2_5` | PM2.5 air quality | No |
+| `ha_indoor_temp_entity` | `sensor.living_room_temperature` | Indoor temperature | No |
+| `ha_indoor_humidity_entity` | `sensor.living_room_humidity` | Indoor humidity | No |
+| `ha_tasks_entity` | `sensor.open_tasks` | Open tasks count | No |
+| `ha_fuel_price_entity` | `sensor.fuel_price_super` | Fuel price (€) | No |
+| `ha_currency_entity` | `sensor.eur_pln` | Exchange rate | No |
+| `ha_ev_battery_entity` | `sensor.ev_battery_level` | EV battery (%) | No |
+| `ha_ev_range_entity` | `sensor.ev_range` | EV electric range (km) | No |
+| `ha_fuel_range_entity` | `sensor.fuel_driving_range` | Fuel range (km) | No |
+| `label_outdoor_sensor` | `"Outdoor sensor"` | Label shown on display | No |
+| `label_fuel_station` | `"Fuel station"` | Station name on display | No |
+| `label_fuel_closed` | `"Station closed"` | Text when no fuel price data | No |
+| `label_car_name` | `"Car:"` | Car section label on display | No |
 
 ### How to Replace an Entity
 
-Each sensor in `dashboard.yaml` has a block like this:
+All entity IDs are set in the `substitutions:` block at the **top of `dashboard.yaml`**:
 
 ```yaml
-  - platform: homeassistant
-    id: local_temp                          # internal ID — used in the display lambda
-    entity_id: sensor.taras_temperature     # ← replace this with YOUR entity ID
-    internal: true
-    unit_of_measurement: "°C"
+substitutions:
+  ha_outdoor_temp_entity: sensor.garden_temperature   # ← put YOUR entity ID here
+  ha_indoor_temp_entity: sensor.living_room_temperature
+  # ... etc.
 ```
 
-To change it, **only replace `entity_id`** — keep the `id` the same, as it's referenced by the display rendering code.
+You **do not** need to touch the individual `- platform: homeassistant` sensor blocks — they all reference the substitution variables.
 
 **How to find your entity ID in Home Assistant:**
 
 1. Go to **Developer Tools → States**
 2. Filter by type (e.g., type "temperature")
 3. Copy the `entity_id` value (e.g., `sensor.garden_temperature`)
-4. Paste it into `dashboard.yaml` in the corresponding block
+4. Paste it as the value of the corresponding substitution variable in `dashboard.yaml`
 
 ### How to Add a New Sensor
 
@@ -372,7 +370,7 @@ And in the lambda:
 
 ### How to Remove a Section
 
-To remove something you don't need (e.g., Tucson PHEV, fuel price, tasks), **delete two things**:
+To remove something you don't need (e.g., EV/car section, fuel price, tasks), **delete three things**:
 
 **1. The sensor definition** — find and delete the whole `- platform: homeassistant` block:
 
@@ -380,12 +378,14 @@ To remove something you don't need (e.g., Tucson PHEV, fuel price, tasks), **del
   # Delete this entire block:
   - platform: homeassistant
     id: ev_battery
-    entity_id: sensor.tucson_ev_battery_level
+    entity_id: ${ha_ev_battery_entity}
     internal: true
     unit_of_measurement: "%"
 ```
 
-**2. The rendering code** — find the corresponding section in the display `lambda:` and delete it. Look for the `id(ev_battery)` reference. For the Tucson section, delete from the separator line (`it.line(right_col_x, ...)`) through the `fuel_range` printf.
+**2. The rendering code** — find the corresponding section in the display `lambda:` and delete it. Look for the `id(ev_battery)` reference. For the car section, delete from the separator line (`it.line(right_col_x, ...)`) through the `fuel_range` printf.
+
+**3. Optionally**, remove the now-unused substitution variables from the `substitutions:` block at the top of the file.
 
 > **Tip:** Use your editor's search to find all references to the sensor's `id` (e.g., search for `ev_battery`) to make sure you delete everything.
 
@@ -397,19 +397,19 @@ Calendars are configured in **two places**:
 
 ```yaml
   entity_id:
-    - calendar.smarthome            # Replace with your calendar
-    - calendar.urlopy               # Replace or remove
-    - calendar.swieta_w_niemczech   # Replace or remove
+    - calendar.home          # ← replace with your main calendar
+    - calendar.vacations     # ← replace or remove
+    - calendar.public_holidays # ← replace or remove
 ```
 
 To **add a calendar**, add another `- calendar.your_calendar` line and add a matching variable:
 ```yaml
   - variables:
-      events_smarthome: "{{ agenda['calendar.smarthome']['events'] | default([]) }}"
-      events_urlopy: "{{ agenda['calendar.urlopy']['events'] | default([]) }}"
-      events_swieta: "{{ agenda['calendar.swieta_w_niemczech']['events'] | default([]) }}"
+      events_home: "{{ agenda['calendar.home']['events'] | default([]) }}"
+      events_vacations: "{{ agenda['calendar.vacations']['events'] | default([]) }}"
+      events_holidays: "{{ agenda['calendar.public_holidays']['events'] | default([]) }}"
       events_new: "{{ agenda['calendar.your_calendar']['events'] | default([]) }}"  # ← add
-      events_all: "{{ events_smarthome + events_urlopy + events_swieta + events_new }}"  # ← include
+      events_all: "{{ events_home + events_vacations + events_holidays + events_new }}"  # ← include
 ```
 
 To **remove a calendar**, delete its `entity_id` line, its variable, and remove it from `events_all`.
@@ -450,20 +450,20 @@ Replace these calendar entity IDs in `templates.yaml` with your own:
 
 ```yaml
 entity_id:
-  - calendar.smarthome            # Your main calendar
-  - calendar.urlopy               # Vacation calendar
-  - calendar.swieta_w_niemczech   # Holidays calendar
+  - calendar.home          # ← Your main calendar
+  - calendar.vacations     # ← Vacation/leave calendar
+  - calendar.public_holidays # ← Holidays calendar
 ```
 
 ### Weather Integration
 
-Replace the weather entity in `templates.yaml`:
+Replace the weather entity in `templates.yaml` (two occurrences — in the trigger and in the action):
 
 ```yaml
-entity_id: weather.forecast_dom   # ← replace with your weather entity
+entity_id: weather.forecast_home   # ← replace with your weather entity
 ```
 
-And update the forecast references (`forecast['weather.forecast_dom']`) to match:
+And update all forecast references (`forecast['weather.forecast_home']`) to match:
 
 ```yaml
 state: "{{ forecast['weather.your_entity'].forecast[0].temperature }}"

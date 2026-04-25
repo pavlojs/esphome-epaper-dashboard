@@ -2,13 +2,13 @@
     - trigger: homeassistant
       event: start
     - trigger: state
-      entity_id: weather.forecast_dom # ← replace with your weather entity
+      entity_id: weather.forecast_home # ← replace with your HA weather entity
     - trigger: time_pattern
       hours: "/3"
   action:
     - action: weather.get_forecasts
       target:
-        entity_id: weather.forecast_dom
+        entity_id: weather.forecast_home # ← replace with your HA weather entity
       data:
         type: daily
       response_variable: forecast
@@ -16,71 +16,71 @@
     # --- Today ---
     - name: "Forecast Today Date"
       state: >
-        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[0].datetime) 
+        {{ as_timestamp(forecast['weather.forecast_home'].forecast[0].datetime) 
             | timestamp_custom('%A, %d.%m', true) }}
     - name: "Forecast Today Temp Max"
-      state: "{{ forecast['weather.forecast_dom'].forecast[0].temperature }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[0].temperature }}"
       unit_of_measurement: "°C"
     - name: "Forecast Today Precipitation"
-      state: "{{ forecast['weather.forecast_dom'].forecast[0].precipitation }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[0].precipitation }}"
       unit_of_measurement: "mm"
     - name: "Forecast Today Conditions"
-      state: "{{ forecast['weather.forecast_dom'].forecast[0].condition }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[0].condition }}"
     # --- Day 1 ---
     - name: "Forecast Day 1 Date"
       state: >
-        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[1].datetime) 
+        {{ as_timestamp(forecast['weather.forecast_home'].forecast[1].datetime) 
             | timestamp_custom('%A, %d.%m', true) }}
     - name: "Forecast Day 1 Temp Max"
-      state: "{{ forecast['weather.forecast_dom'].forecast[1].temperature }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[1].temperature }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 1 Temp Min"
-      state: "{{ forecast['weather.forecast_dom'].forecast[1].templow }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[1].templow }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 1 Conditions"
-      state: "{{ forecast['weather.forecast_dom'].forecast[1].condition }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[1].condition }}"
 
     # --- Day 2 ---
     - name: "Forecast Day 2 Date"
       state: >
-        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[2].datetime) 
+        {{ as_timestamp(forecast['weather.forecast_home'].forecast[2].datetime) 
             | timestamp_custom('%A, %d.%m', true) }}
     - name: "Forecast Day 2 Temp Max"
-      state: "{{ forecast['weather.forecast_dom'].forecast[2].temperature }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[2].temperature }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 2 Temp Min"
-      state: "{{ forecast['weather.forecast_dom'].forecast[2].templow }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[2].templow }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 2 Conditions"
-      state: "{{ forecast['weather.forecast_dom'].forecast[2].condition }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[2].condition }}"
 
     # --- Day 3 ---
     - name: "Forecast Day 3 Date"
       state: >
-        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[3].datetime) 
+        {{ as_timestamp(forecast['weather.forecast_home'].forecast[3].datetime) 
             | timestamp_custom('%A, %d.%m', true) }}
     - name: "Forecast Day 3 Temp Max"
-      state: "{{ forecast['weather.forecast_dom'].forecast[3].temperature }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[3].temperature }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 3 Temp Min"
-      state: "{{ forecast['weather.forecast_dom'].forecast[3].templow }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[3].templow }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 3 Conditions"
-      state: "{{ forecast['weather.forecast_dom'].forecast[3].condition }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[3].condition }}"
 
     # --- Day 4 ---
     - name: "Forecast Day 4 Date"
       state: >
-        {{ as_timestamp(forecast['weather.forecast_dom'].forecast[4].datetime) 
+        {{ as_timestamp(forecast['weather.forecast_home'].forecast[4].datetime) 
             | timestamp_custom('%A, %d.%m', true) }}
     - name: "Forecast Day 4 Temp Max"
-      state: "{{ forecast['weather.forecast_dom'].forecast[4].temperature }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[4].temperature }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 4 Temp Min"
-      state: "{{ forecast['weather.forecast_dom'].forecast[4].templow }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[4].templow }}"
       unit_of_measurement: "°C"
     - name: "Forecast Day 4 Conditions"
-      state: "{{ forecast['weather.forecast_dom'].forecast[4].condition }}"
+      state: "{{ forecast['weather.forecast_home'].forecast[4].condition }}"
 
 - trigger:
     - trigger: homeassistant
@@ -91,18 +91,18 @@
       event_type: event_template_reloaded
     - trigger: state
       entity_id:
-        - calendar.smarthome
-        - calendar.urlopy
-        - calendar.swieta_w_niemczech
+        - calendar.home          # ← replace with your main calendar entity
+        - calendar.vacations     # ← replace with your vacation/leave calendar entity
+        - calendar.public_holidays # ← replace with your public holidays calendar entity
 
   action:
     # Fetch events from all three calendars
     - action: calendar.get_events
       target:
         entity_id:
-          - calendar.smarthome
-          - calendar.urlopy
-          - calendar.swieta_w_niemczech
+          - calendar.home          # ← replace with your main calendar entity
+          - calendar.vacations     # ← replace with your vacation/leave calendar entity
+          - calendar.public_holidays # ← replace with your public holidays calendar entity
       data:
         duration:
           days: 2
@@ -110,10 +110,10 @@
 
     # Define helper variables
     - variables:
-        events_smarthome: "{{ agenda['calendar.smarthome']['events'] | default([]) }}"
-        events_urlopy: "{{ agenda['calendar.urlopy']['events'] | default([]) }}"
-        events_swieta: "{{ agenda['calendar.swieta_w_niemczech']['events'] | default([]) }}"
-        events_all: "{{ events_smarthome + events_urlopy + events_swieta }}"
+        events_home: "{{ agenda['calendar.home']['events'] | default([]) }}"
+        events_vacations: "{{ agenda['calendar.vacations']['events'] | default([]) }}"
+        events_holidays: "{{ agenda['calendar.public_holidays']['events'] | default([]) }}"
+        events_all: "{{ events_home + events_vacations + events_holidays }}"
 
   sensor:
     - name: "Upcoming Events"

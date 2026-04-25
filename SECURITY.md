@@ -24,6 +24,7 @@ This project runs on an ESP32 microcontroller connected to your home network and
 ### WiFi & Network
 
 - **Always use `secrets.yaml`** for WiFi credentials and API keys — never hardcode them in `dashboard.yaml`
+- **Set entity IDs via the `substitutions:` block** at the top of `dashboard.yaml` — avoids scattering personal data throughout the file and makes it easier to share or publish
 - **Isolate IoT devices** on a separate VLAN or WiFi network if your router supports it
 - Use **WPA3** or at minimum **WPA2** for your WiFi network
 - **Disable the AP fallback hotspot** in production, or set a strong password if you keep it enabled
