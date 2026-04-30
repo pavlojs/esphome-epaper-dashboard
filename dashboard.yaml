@@ -717,16 +717,18 @@ display:
         }
 
         bool has_urlop = false;
+        bool has_wartung = false;
 
-        // Check for "Urlop" (vacation) / "Urlaub"
+        // Check event names for Urlop/Urlaub (vacation) and Wartung (maintenance)
         for (auto &s : lst) {
           std::string low = lower_copy(s);
           if (low.find("urlop") != std::string::npos ||
-              low.find("urlaub") != std::string::npos) {
+              low.find("urlaub") != std::string::npos)
             has_urlop = true;
-            break;
-          }
+          if (low.find("wartung") != std::string::npos)
+            has_wartung = true;
         }
+        bool suppress_shifts = has_urlop || has_wartung;
 
         // Process events
         for (auto &s : lst) {
@@ -740,14 +742,15 @@ display:
                           low.find("spat") != std::string::npos || 
                           low.find("spät") != std::string::npos ||
                           low.find("nacht") != std::string::npos);
-          // Skip vacation events themselves (re-added as "Urlop" at the end)
-          bool is_vacation = (low.find("urlop") != std::string::npos ||
-                              low.find("urlaub") != std::string::npos);
-          if (is_vacation) {
+          // Skip Urlop/Wartung events themselves (re-added as labels at the end)
+          bool is_blocker = (low.find("urlop") != std::string::npos ||
+                             low.find("urlaub") != std::string::npos ||
+                             low.find("wartung") != std::string::npos);
+          if (is_blocker) {
             continue;
           }
-          if (has_urlop && is_shift) {
-            // If on vacation -> skip shifts
+          if (suppress_shifts && is_shift) {
+            // Urlop or Wartung active -> skip shifts
             continue;
           }
 
@@ -767,8 +770,11 @@ display:
           if (is_trash) out.draw_trash = true;
         }
 
+        // Add blocking event labels at the top
+        if (has_wartung) {
+          out.lines.insert(out.lines.begin(), "Wartung");
+        }
         if (has_urlop) {
-          // Always add "Urlop" (vacation) at the top
           out.lines.insert(out.lines.begin(), "Urlop");
         }
 
