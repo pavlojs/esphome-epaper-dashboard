@@ -680,10 +680,13 @@ display:
           size_t start = idx + mlow.size();
           size_t next_today = low.find("today:", start);
           size_t next_tom = low.find("tomorrow:", start);
+          size_t next_other = low.find("other:", start);
           size_t next_marker = std::string::npos;
           if (next_today != std::string::npos) next_marker = next_today;
           if (next_tom != std::string::npos && (next_marker==std::string::npos || next_tom < next_marker))
             next_marker = next_tom;
+          if (next_other != std::string::npos && (next_marker==std::string::npos || next_other < next_marker))
+            next_marker = next_other;
           size_t end = (next_marker == std::string::npos) ? low.size() : next_marker;
 
           std::string seg = raw.substr(start, end - start);
