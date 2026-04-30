@@ -91,17 +91,15 @@
       event_type: event_template_reloaded
     - trigger: state
       entity_id:
-        - calendar.home          # ← replace with your main calendar entity
-        - calendar.vacations     # ← replace with your vacation/leave calendar entity
+        - calendar.home          # ← replace with your main calendar entity (shifts, vacation, events live here)
         - calendar.public_holidays # ← replace with your public holidays calendar entity
 
   action:
-    # Fetch events from all three calendars
+    # Fetch events from both calendars
     - action: calendar.get_events
       target:
         entity_id:
-          - calendar.home          # ← replace with your main calendar entity
-          - calendar.vacations     # ← replace with your vacation/leave calendar entity
+          - calendar.home          # ← replace with your main calendar entity (shifts, vacation, events live here)
           - calendar.public_holidays # ← replace with your public holidays calendar entity
       data:
         duration:
@@ -111,9 +109,9 @@
     # Define helper variables
     - variables:
         events_home: "{{ agenda['calendar.home']['events'] | default([]) }}"
-        events_vacations: "{{ agenda['calendar.vacations']['events'] | default([]) }}"
         events_holidays: "{{ agenda['calendar.public_holidays']['events'] | default([]) }}"
-        events_all: "{{ events_home + events_vacations + events_holidays }}"
+        events_all: "{{ events_home + events_holidays }}"
+        # Note: Vacation detection is event-name-based — add those events directly to calendar.home
 
   sensor:
     - name: "Upcoming Events"
